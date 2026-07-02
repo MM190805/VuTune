@@ -85,10 +85,20 @@ class IMVUBrowserClient:
                 try:
                     logger.info("Opening login modal...")
                     try:
-                        await page.locator('text="Log In", text="Log in", text="LOG IN"').first.click(timeout=5000)
+                        # Use the specific class from the HTML inspector
+                        login_trigger = page.locator('button.sign-in').first
+                        await login_trigger.click(timeout=5000, force=True)
                         await page.wait_for_timeout(2000)
                     except Exception as e:
-                        logger.info("No login modal trigger found, assuming form is visible.")
+                        logger.warning(f"Standard locator failed, trying JS fallback: {e}")
+                        try:
+                            await page.evaluate("""
+                                const el = Array.from(document.querySelectorAll('a, button, span')).find(e => e.innerText && e.innerText.toLowerCase().includes('log in'));
+                                if(el) el.click();
+                            """)
+                            await page.wait_for_timeout(2000)
+                        except:
+                            logger.info("No login modal trigger found, assuming form is visible.")
                         
                     user_input = page.locator('input[type="text"], input[type="email"], input[name="username"]').first
                     logger.info("Waiting for username input...")
