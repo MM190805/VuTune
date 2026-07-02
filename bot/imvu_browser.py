@@ -119,12 +119,18 @@ class IMVUBrowserClient:
                         logger.warning(f"Standard submit failed, trying JS fallback: {e}")
                         await page.evaluate("document.querySelector('form[name=\"login_form\"] .submit, .submit, form[name=\"login_form\"] button').click()")
                     
-                    logger.info("Waiting after login click...")
-                    await page.wait_for_timeout(5000)
+                    logger.info("Waiting after login click for URL to change...")
+                    try:
+                        await page.wait_for_url(lambda u: "login" not in u.lower() and "welcome" not in u.lower(), timeout=20000)
+                        logger.info(f"Login successful! URL changed to {page.url}")
+                    except Exception as e:
+                        logger.warning("URL did not change after 20 seconds. Checking if stuck on 2FA/Captcha.")
+                        
+                    await page.wait_for_timeout(2000)
                     await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
                     logger.info("Saved post-login screenshot to debug.jpg")
                     
-                    if "login" in page.url.lower():
+                    if "login" in page.url.lower() or "welcome" in page.url.lower():
                         logger.warning("Still on login page! Likely hit 2FA or Captcha. Waiting for user input via /debug...")
                         await self.two_factor_event.wait()
                         code = self.two_factor_code
