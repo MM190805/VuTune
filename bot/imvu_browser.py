@@ -10,16 +10,17 @@ class IMVUBrowserClient:
         self.credentials = credentials or {}
         self.two_factor_code = None
         self.two_factor_event = asyncio.Event()
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.pages = {} # room_id -> page
+        self.is_running = False
+        self.is_logged_in = False
+        self.tasks = {} # room_id -> task
         
     def provide_2fa(self, code):
         self.two_factor_code = code
         self.two_factor_event.set()
-        self.playwright = None
-        self.browser = None
-        self.context = None
-        self.is_running = False
-        self.pages = {} # room_id -> page
-        self.tasks = {} # room_id -> task
 
     async def start(self):
         self.is_running = True
