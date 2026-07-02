@@ -100,16 +100,21 @@ class IMVUBrowserClient:
                         except:
                             logger.info("No login modal trigger found, assuming form is visible.")
                         
-                    user_input = page.locator('form[name="login_form"] input[name="avatarname"], form[name="login_form"] input[type="text"], input[name="avatarname"]').first
+                    user_input = page.locator('input[name="avatarname"]:visible, form[name="login_form"] input[type="text"]:visible').first
                     logger.info("Waiting for username input...")
                     await user_input.wait_for(timeout=15000)
                     await user_input.fill(self.credentials.get('username', 'VuTune'), timeout=5000)
                     
                     logger.info("Filling password...")
-                    await page.locator('form[name="login_form"] input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''), timeout=5000)
+                    await page.locator('input[name="password"]:visible, form[name="login_form"] input[type="password"]:visible').first.fill(self.credentials.get('password', ''), timeout=5000)
                     
                     logger.info("Clicking login...")
-                    await page.locator('form[name="login_form"] .submit, form[name="login_form"] .label-log-in, form[name="login_form"] button, form[name="login_form"] input[type="submit"]').first.click(timeout=5000, force=True)
+                    try:
+                        submit_btn = page.locator('form[name="login_form"] .submit:visible, form[name="login_form"] button:visible, .submit:visible').first
+                        await submit_btn.click(timeout=5000, force=True)
+                    except Exception as e:
+                        logger.warning(f"Standard submit failed, trying JS fallback: {e}")
+                        await page.evaluate("document.querySelector('form[name=\"login_form\"] .submit, .submit, form[name=\"login_form\"] button').click()")
                     
                     logger.info("Waiting after login click...")
                     await page.wait_for_timeout(5000)
