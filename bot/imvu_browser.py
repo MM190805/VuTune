@@ -147,7 +147,10 @@ class IMVUBrowserClient:
             await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
 
             logger.info(f"Navigating to room {room_id}...")
-            await page.goto(f"https://www.imvu.com/next/chat/room-{room_id}/", timeout=60000)
+            try:
+                await page.goto(f"https://www.imvu.com/next/chat/room-{room_id}/", wait_until="domcontentloaded", timeout=120000)
+            except Exception as e:
+                logger.warning(f"Goto room timed out or failed, but we might still be there: {e}")
             
             logger.info("Waiting 30 seconds for room to load...")
             await page.wait_for_timeout(30000)
