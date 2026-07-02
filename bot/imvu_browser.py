@@ -33,10 +33,19 @@ class IMVUBrowserClient:
             headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
+                "--disable-gpu",
+                "--disable-webgl",
+                "--disable-webgl2",
+                "--disable-3d-apis",
+                "--disable-accelerated-2d-canvas",
+                "--disable-accelerated-jpeg-decoding",
+                "--disable-accelerated-video-decode",
                 "--disable-dev-shm-usage",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--js-flags=--max-old-space-size=512"
+                "--js-flags=--max-old-space-size=256",
+                "--renderer-process-limit=1",
+                "--single-process"
             ]
         )
 
