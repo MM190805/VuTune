@@ -75,26 +75,37 @@ class IMVUBrowserClient:
             await page.route("**/*", abort_route)
             
             logger.info("Checking authentication...")
-            await page.goto("https://www.imvu.com/next/login/")
+            await page.goto("https://www.imvu.com/next/login/", timeout=60000)
             await page.wait_for_timeout(4000)
+            await page.screenshot(path="debug.png")
+            logger.info("Saved initial page screenshot to debug.png")
             
             if "login" in page.url.lower():
                 logger.info("Session invalid on Cloud. Attempting automated login...")
                 try:
-                    await page.locator('input[type="text"], input[type="email"], input[name="username"]').first.fill(self.credentials.get('username', 'VuTune'))
-                    await page.locator('input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''))
-                    await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("LOG IN")').first.click()
+                    user_input = page.locator('input[type="text"], input[type="email"], input[name="username"]').first
+                    logger.info("Waiting for username input...")
+                    await user_input.wait_for(timeout=15000)
+                    await user_input.fill(self.credentials.get('username', 'VuTune'), timeout=5000)
+                    
+                    logger.info("Filling password...")
+                    await page.locator('input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''), timeout=5000)
+                    
+                    logger.info("Clicking login...")
+                    await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("LOG IN")').first.click(timeout=5000)
+                    
+                    logger.info("Waiting after login click...")
                     await page.wait_for_timeout(5000)
                     await page.screenshot(path="debug.png")
+                    logger.info("Saved post-login screenshot to debug.png")
                     
                     if "login" in page.url.lower():
                         logger.warning("Still on login page! Likely hit 2FA or Captcha. Waiting for user input via /debug...")
-                        # Wait for the user to submit 2FA code from the dashboard
                         await self.two_factor_event.wait()
                         code = self.two_factor_code
                         logger.info(f"Received 2FA code! Submitting...")
-                        await page.locator('input[type="text"], input[type="number"], input[name="code"]').first.fill(code)
-                        await page.locator('button[type="submit"], button:has-text("Submit"), button:has-text("Verify")').first.click()
+                        await page.locator('input[type="text"], input[type="number"], input[name="code"]').first.fill(code, timeout=5000)
+                        await page.locator('button[type="submit"], button:has-text("Submit"), button:has-text("Verify")').first.click(timeout=5000)
                         await page.wait_for_timeout(5000)
                         self.two_factor_event.clear()
                     
