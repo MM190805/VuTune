@@ -80,9 +80,16 @@ class IMVUBrowserClient:
             await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
             logger.info("Saved initial page screenshot to debug.jpg")
             
-            if "login" in page.url.lower():
+            if "login" in page.url.lower() or "welcome" in page.title().lower():
                 logger.info("Session invalid on Cloud. Attempting automated login...")
                 try:
+                    logger.info("Opening login modal...")
+                    try:
+                        await page.locator('text="Log In", text="Log in", text="LOG IN"').first.click(timeout=5000)
+                        await page.wait_for_timeout(2000)
+                    except Exception as e:
+                        logger.info("No login modal trigger found, assuming form is visible.")
+                        
                     user_input = page.locator('input[type="text"], input[type="email"], input[name="username"]').first
                     logger.info("Waiting for username input...")
                     await user_input.wait_for(timeout=15000)
