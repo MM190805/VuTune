@@ -63,6 +63,18 @@ class IMVUBrowserClient:
             )
 
         await _stealth.apply_stealth_async(self.context)
+        
+        # Block heavy assets to save RAM (Fixes 512MB OOM crash on Render)
+        async def intercept_route(route):
+            req = route.request
+            if req.resource_type in ["image", "media", "font"]:
+                await route.abort()
+            elif req.url.lower().endswith(('.cfl', '.xsf', '.chkn', '.png', '.jpg', '.jpeg', '.mp3', '.ogg', '.webp', '.gif')):
+                await route.abort()
+            else:
+                await route.continue_()
+        await self.context.route("**/*", intercept_route)
+
         self.username = self.credentials.get("username", "VuTune")
 
     async def join_room(self, room_id, on_message_callback):
