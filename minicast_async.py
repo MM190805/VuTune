@@ -73,6 +73,19 @@ async def handle_client(reader, writer):
             writer.write(b"HTTP/1.0 200 OK\r\n\r\nOK")
             await writer.drain()
             
+        elif b"GET /debug/screenshot" in req_data:
+            try:
+                import os
+                if os.path.exists("debug.png"):
+                    with open("debug.png", "rb") as f:
+                        data = f.read()
+                    writer.write(b"HTTP/1.0 200 OK\r\nContent-Type: image/png\r\n\r\n" + data)
+                else:
+                    writer.write(b"HTTP/1.0 404 Not Found\r\n\r\nNo screenshot available.")
+            except Exception as e:
+                writer.write(b"HTTP/1.0 500 Internal Server Error\r\n\r\n" + str(e).encode())
+            await writer.drain()
+            
         elif b"GET /stream" in req_data:
             writer.write(
                 b"HTTP/1.1 200 OK\r\n"

@@ -69,10 +69,20 @@ class IMVUBrowserClient:
                 logger.info("Clicked JOIN button.")
                 # Give it a few seconds to load the chat UI
                 await page.wait_for_timeout(5000)
-            except Exception as e:
+            except Exception:
                 logger.warning("No JOIN button found, might already be joined or different UI.")
             
+            try:
+                url = page.url
+                title = await page.title()
+                logger.info(f"DEBUG - Current URL: {url}")
+                logger.info(f"DEBUG - Page Title: {title}")
+                await page.screenshot(path="debug.png")
+            except Exception as e:
+                logger.error(f"Failed to take debug screenshot: {e}")
+            
             # Start polling chat
+            logger.info(f"Started chat listener for {room_id}...")
             task = asyncio.create_task(self._poll_chat(room_id, on_message_callback))
             self.tasks[room_id] = task
             return True
