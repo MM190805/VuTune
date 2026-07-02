@@ -134,36 +134,22 @@ class IMVUBrowserClient:
                             if (btn) btn.click();
                         """)
 
-                    # IMVU login is AJAX-based - URL never changes!
-                    # Instead, wait for authenticated nav elements to appear.
-                    logger.info("Waiting for IMVU to complete AJAX login...")
-                    logged_in = False
-                    try:
-                        # These elements only appear when logged in
-                        await page.locator(
-                            '.user-credits, .header-avatar, [data-testid="user-avatar"], '
-                            'a[href*="/next/people/"], .account-dropdown'
-                        ).first.wait_for(timeout=25000)
-                        logged_in = True
-                        logger.info(f"Login successful! Detected authenticated UI element.")
-                    except Exception:
-                        logger.warning("Login UI element not detected in 25s. Checking page state...")
+                    # IMVU login is AJAX-based. After submitting, just wait then
+                    # navigate to the homepage to see if we're authenticated.
+                    logger.info("Waiting 8 seconds for IMVU AJAX login to complete...")
+                    await page.wait_for_timeout(8000)
 
+                    logger.info("Navigating to IMVU homepage to verify login...")
+                    await page.goto("https://www.imvu.com/next/", wait_until="domcontentloaded", timeout=30000)
                     await page.wait_for_timeout(3000)
                     await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
                     logger.info(f"Post-login URL: {page.url}")
 
                     # ---------- 3. HANDLE 2FA IF NEEDED ----------
-                    if not logged_in:
-                        # Check if a 2FA / verification code input is present
-                        has_2fa = await page.locator(
-                            'input[name="code"], input[placeholder*="code"], input[placeholder*="Code"]'
-                        ).count() > 0
-                        if has_2fa:
-                            logger.warning("2FA code input detected! Waiting for user input via /debug...")
-                        else:
-                            logger.warning("Login may have failed or needs more time. Check /debug screenshot.")
-                            
+                    # Check if login form is still showing (meaning login failed or needs 2FA)
+                    login_form_count = await page.locator('input[name="avatarname"], input[type="password"]').count()
+                    if login_form_count > 0:
+                        logger.warning("Login form still present — may need 2FA or captcha. Waiting for user input via /debug...")
                         await self.two_factor_event.wait()
                         code = self.two_factor_code
                         logger.info("Received 2FA code! Submitting...")
@@ -176,8 +162,8 @@ class IMVUBrowserClient:
                         await page.wait_for_timeout(5000)
                         await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
                         self.two_factor_event.clear()
-
-                    logger.info(f"Post-login URL: {page.url}")
+                    else:
+                        logger.info("Login successful! No login form detected on homepage.")
 
                 except Exception as e:
                     logger.error(f"Automated login failed: {e}")
