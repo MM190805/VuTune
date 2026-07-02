@@ -155,23 +155,37 @@ class IMVUBrowserClient:
                         logger.warning(f"2FA code {code} detected! Submitting...")
                         
                         try:
-                            # Usually 2FA uses a generic text input or number input
-                            code_input = page.locator('form[name="login_form"] input').first
+                            # Exact selector based on provided DOM
+                            code_input = page.locator('input.two-factor-code').first
+                            await code_input.wait_for(state="visible", timeout=5000)
                             await code_input.click(force=True)
                             await page.keyboard.press("Control+A")
                             await page.keyboard.press("Backspace")
                             await page.keyboard.type(code, delay=100)
                             await page.keyboard.press("Enter")
-                            logger.info("Submitted 2FA code!")
-                            await page.wait_for_timeout(10000)
+                            
+                            # Fallback click the Continue button just in case Enter doesn't trigger it
+                            continue_btn = page.locator('.two-factor-challenge-dialog button:has-text("CONTINUE"), .two-factor-challenge-dialog button:has-text("Continue")').first
+                            if await continue_btn.is_visible(timeout=2000):
+                                await continue_btn.click(force=True)
+                                
+                            logger.info("Submitted 2FA code! Waiting 15s...")
+                            await page.wait_for_timeout(15000)
                         except Exception as e:
                             logger.error(f"Error submitting 2FA: {e}")
                         break
                         
-                    # If modal disappeared, we successfully logged in!
-                    if not await page.locator('form[name="login_form"]').first.is_visible():
-                        logger.info("Login modal disappeared, authentication successful!")
+                    # Check if 2FA modal is currently visible
+                    is_2fa = await page.locator('.two-factor-challenge-dialog').first.is_visible()
+                    is_login = await page.locator('form[name="login_form"]').first.is_visible()
+                    
+                    if not is_login and not is_2fa:
+                        logger.info("Login/2FA modals disappeared, authentication successful!")
                         break
+                    elif is_2fa:
+                        # Print once every few loops to avoid spam
+                        if _ % 5 == 0:
+                            logger.info("Waiting for user to submit 2FA code via /debug/2fa ...")
             except Exception as e:
                 logger.warning(f"Exception during login modal handling (or timeout): {e}")
                 logger.info("If no modal popped up, we should be entering the room now.")
