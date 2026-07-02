@@ -134,39 +134,47 @@ class IMVUBrowserClient:
                             if (btn) btn.click();
                         """)
 
-                    # Wait for redirect away from login
-                    logger.info("Waiting for login redirect...")
+                    # IMVU login is AJAX-based - URL never changes!
+                    # Instead, wait for authenticated nav elements to appear.
+                    logger.info("Waiting for IMVU to complete AJAX login...")
+                    logged_in = False
                     try:
-                        await page.wait_for_url(
-                            lambda u: "login" not in u.lower() and "welcome" not in u.lower(),
-                            timeout=25000
-                        )
-                        logger.info(f"Login successful! URL: {page.url}")
+                        # These elements only appear when logged in
+                        await page.locator(
+                            '.user-credits, .header-avatar, [data-testid="user-avatar"], '
+                            'a[href*="/next/people/"], .account-dropdown'
+                        ).first.wait_for(timeout=25000)
+                        logged_in = True
+                        logger.info(f"Login successful! Detected authenticated UI element.")
                     except Exception:
-                        logger.warning("URL did not change in 25 seconds. May be stuck on 2FA or Captcha.")
+                        logger.warning("Login UI element not detected in 25s. Checking page state...")
 
-                    await page.wait_for_timeout(8000)  # Give IMVU Next session time to fully initialize
+                    await page.wait_for_timeout(3000)
                     await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
                     logger.info(f"Post-login URL: {page.url}")
-                    logger.info("Saved post-login screenshot to debug.jpg")
 
-                    # ---------- 3. HANDLE 2FA IF PRESENT ----------
-                    if "login" in page.url.lower() or "welcome" in page.url.lower():
-                        logger.warning("Still on login page! Waiting for user 2FA input via /debug...")
+                    # ---------- 3. HANDLE 2FA IF NEEDED ----------
+                    if not logged_in:
+                        # Check if a 2FA / verification code input is present
+                        has_2fa = await page.locator(
+                            'input[name="code"], input[placeholder*="code"], input[placeholder*="Code"]'
+                        ).count() > 0
+                        if has_2fa:
+                            logger.warning("2FA code input detected! Waiting for user input via /debug...")
+                        else:
+                            logger.warning("Login may have failed or needs more time. Check /debug screenshot.")
+                            
                         await self.two_factor_event.wait()
                         code = self.two_factor_code
                         logger.info("Received 2FA code! Submitting...")
                         await page.locator(
-                            'input[type="text"]:visible, '
-                            'input[type="number"]:visible, '
-                            'input[name="code"]:visible'
+                            'input[name="code"]:visible, input[type="number"]:visible'
                         ).first.fill(code, timeout=5000)
                         await page.locator(
-                            'button[type="submit"]:visible, '
-                            'button:has-text("Submit"):visible, '
-                            'button:has-text("Verify"):visible'
+                            'button[type="submit"]:visible, button:has-text("Submit"):visible, button:has-text("Verify"):visible'
                         ).first.click(timeout=5000)
                         await page.wait_for_timeout(5000)
+                        await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
                         self.two_factor_event.clear()
 
                     logger.info(f"Post-login URL: {page.url}")
