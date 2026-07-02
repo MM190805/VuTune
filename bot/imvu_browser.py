@@ -191,22 +191,10 @@ class IMVUBrowserClient:
                 logger.info("If no modal popped up, we should be entering the room now.")
 
             # ---------- 3. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
-            # We apply the blocker NOW so that the login form's
-            # CSS/images still load correctly during authentication.
-            async def block_heavy_assets(route):
-                rt = route.request.resource_type
-                url = route.request.url.lower()
-                if rt in ["fetch", "xhr", "websocket", "document", "script"]:
-                    if any(ext in url for ext in [".cfl", ".chkn", ".xmf", ".xrf", ".xsf", ".crg"]):
-                        await route.abort()
-                    else:
-                        await route.continue_()
-                elif rt in ["media", "font"]:
-                    await route.abort()
-                else:
-                    await route.continue_()
-
-            await page.route("**/*", block_heavy_assets)
+            # Disabled: Aborting these files breaks the IMVU React loader
+            # and causes it to freeze on the Join screen!
+            # async def block_heavy_assets(route): ...
+            # await page.route("**/*", block_heavy_assets)
 
             # Try to click Join button if present
             try:
@@ -225,7 +213,7 @@ class IMVUBrowserClient:
                 # If the button is STILL there, it means React ignored the click. Use JS!
                 if await join_btn.is_visible():
                     logger.warning("Playwright click was ignored by React! Forcing Javascript click...")
-                    await page.evaluate("document.querySelector('button.join-cta').click()")
+                    await join_btn.evaluate("node => node.click()")
                     await page.wait_for_timeout(2000)
                 await page.wait_for_timeout(5000)
                 await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
