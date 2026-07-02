@@ -279,17 +279,42 @@ class IMVUBrowserClient:
         js_code = """
         () => {
             let msgs = [];
-            document.querySelectorAll('.cs2-msg[data-id]').forEach(el => {
-                let lines = el.innerText.split('\\n');
-                for (let line of lines) {
-                    let text = line.trim();
-                    if (text) {
-                        let emojis = ['\uD83C\uDFB5', '\uD83D\uDD0D', '\uD83E\uDD16', '\u274C', '\uD83D\uDD07', '\uD83D\uDEAB', '\u2705', '\uD83D\uDDD1', '\u23ED', '\u23F9'];
-                        let isBot = emojis.some(e => text.startsWith(e)) || text.startsWith('VuTune');
-                        if (!isBot) {
-                            msgs.push(text);
-                        }
-                    }
+            let botPrefixes = ['\uD83C\uDFB5', '\uD83D\uDD0D', '\uD83E\uDD16', '\u274C', '\uD83D\uDD07', '\uD83D\uDEAB', '\u2705', '\uD83D\uDDD1', '\u23ED', '\u23F9'];
+
+            // Try all known IMVU chat message selectors
+            let selectors = [
+                '.cs2-msg[data-id]',
+                '[data-id][class*="msg"]',
+                '[class*="message"][data-id]',
+                '[class*="chat-message"]',
+                '[class*="msg-text"]',
+                '[class*="bubble"]',
+                '.message-bubble',
+                '[class*="ChatMessage"]',
+                '[class*="chatMessage"]',
+            ];
+
+            let foundEls = [];
+            for (let sel of selectors) {
+                let els = document.querySelectorAll(sel);
+                if (els.length > 0) {
+                    foundEls = Array.from(els);
+                    break;
+                }
+            }
+
+            foundEls.forEach(el => {
+                let text = el.innerText ? el.innerText.trim() : '';
+                if (!text) return;
+                // Skip system messages and bot messages
+                let lower = text.toLowerCase();
+                if (lower.includes('joined the chat') || lower.includes('left the chat')) return;
+                let isBot = botPrefixes.some(e => text.startsWith(e)) || text.startsWith('VuTune');
+                if (!isBot) {
+                    // Only grab last line which is the actual message text
+                    let lines = text.split('\\n').filter(l => l.trim());
+                    let lastLine = lines[lines.length - 1] ? lines[lines.length - 1].trim() : '';
+                    if (lastLine) msgs.push(lastLine);
                 }
             });
             return msgs;
