@@ -102,9 +102,13 @@ class IMVUBrowserClient:
             try:
                 logger.info("Waiting for Join button to appear on the room page...")
                 join_btn = page.locator('button.join-cta, .action-join, button:has-text("JOIN"), button:has-text("Join")').first
-                # Wait up to 30 seconds for the button to actually render
                 await join_btn.wait_for(state="visible", timeout=30000)
-                await join_btn.click(force=True)
+                
+                logger.info("Initial Join button found! Injecting Javascript click...")
+                try:
+                    await join_btn.evaluate("node => node.click()")
+                except:
+                    await join_btn.click(force=True)
                 logger.info("Successfully clicked the Join button!")
             except Exception as e:
                 logger.warning(f"Join button error (maybe already in room): {e}")
@@ -202,23 +206,24 @@ class IMVUBrowserClient:
                 await page.wait_for_timeout(5000)
                 
                 logger.info("Looking for Join button...")
-                join_btn = page.locator('button.join-cta, button:has-text("Join"), button:has-text("JOIN")').first
-                await join_btn.wait_for(timeout=20000)
+                for _ in range(5):
+                    join_btn = page.locator('button.join-cta, button:has-text("Join"), button:has-text("JOIN")').first
+                    if not await join_btn.is_visible():
+                        logger.info("Join button is gone. We must be in the room!")
+                        break
+                        
+                    logger.info("Join button found! Injecting Javascript click...")
+                    try:
+                        await join_btn.evaluate("node => node.click()")
+                    except Exception as e:
+                        logger.warning(f"JS click failed: {e}")
+                        
+                    await page.wait_for_timeout(3000)
                 
-                # Try clicking it normally first
-                await join_btn.click(force=True)
-                logger.info("Clicked Join button! Waiting 3s to see if it worked...")
-                await page.wait_for_timeout(3000)
-                
-                # If the button is STILL there, it means React ignored the click. Use JS!
-                if await join_btn.is_visible():
-                    logger.warning("Playwright click was ignored by React! Forcing Javascript click...")
-                    await join_btn.evaluate("node => node.click()")
-                    await page.wait_for_timeout(2000)
                 await page.wait_for_timeout(5000)
                 await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
             except Exception as e:
-                logger.warning(f"No Join button found (may already be in room): {e}")
+                logger.warning(f"Exception while looking for Join button: {e}")
 
             # ---------- 6. START LIVE CAMERA + CHAT POLLING ----------
             logger.info(f"Started live camera and chat listener for room {room_id}...")
