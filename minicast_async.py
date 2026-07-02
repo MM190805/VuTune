@@ -15,16 +15,13 @@ async def fallback_streamer():
             if len(burst_buffer) > 256 * 1024:
                 burst_buffer = bytearray(burst_buffer[-256 * 1024:])
                 
-            chunk_header = f"{len(silence_data):x}\r\n".encode()
-            chunk_payload = chunk_header + silence_data + b"\r\n"
-            
             dead_clients = set()
             for c in list(clients):
                 if c.transport.is_closing():
                     dead_clients.add(c)
                     continue
                 try:
-                    c.write(chunk_payload)
+                    c.write(silence_data)
                 except:
                     dead_clients.add(c)
             
@@ -56,13 +53,10 @@ async def handle_client(reader, writer):
                 if len(burst_buffer) > 256 * 1024:
                     burst_buffer = bytearray(burst_buffer[-256 * 1024:])
                     
-                chunk_header = f"{len(data):x}\r\n".encode()
-                chunk_payload = chunk_header + data + b"\r\n"
-                
                 dead_clients = set()
                 for c in list(clients):
                     try:
-                        c.write(chunk_payload)
+                        c.write(data)
                     except:
                         dead_clients.add(c)
                 for c in dead_clients:
@@ -118,15 +112,14 @@ async def handle_client(reader, writer):
             
         elif b"GET /stream" in req_data:
             writer.write(
-                b"HTTP/1.1 200 OK\r\n"
+                b"ICY 200 OK\r\n"
                 b"Content-Type: audio/mpeg\r\n"
+                b"icy-name: VuTune Radio\r\n"
                 b"Cache-Control: no-cache\r\n"
-                b"Transfer-Encoding: chunked\r\n"
-                b"Connection: keep-alive\r\n\r\n"
+                b"Connection: close\r\n\r\n"
             )
             if burst_buffer:
-                chunk_header = f"{len(burst_buffer):x}\r\n".encode()
-                writer.write(chunk_header + burst_buffer + b"\r\n")
+                writer.write(burst_buffer)
             await writer.drain()
             clients.add(writer)
             while True:
