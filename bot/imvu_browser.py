@@ -92,7 +92,7 @@ class IMVUBrowserClient:
                     await page.locator('input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''), timeout=5000)
                     
                     logger.info("Clicking login...")
-                    await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("LOG IN")').first.click(timeout=5000)
+                    await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("LOG IN")').first.click(timeout=5000, force=True)
                     
                     logger.info("Waiting after login click...")
                     await page.wait_for_timeout(5000)
