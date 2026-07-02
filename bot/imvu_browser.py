@@ -112,13 +112,17 @@ class IMVUBrowserClient:
                     const userField = document.querySelector('form[name="login_form"] input[name="avatarname"]');
                     const passField = document.querySelector('form[name="login_form"] input[type="password"]');
                     const submitBtn = document.querySelector('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit');
+                    
                     if(userField && passField && submitBtn) {{
-                        userField.value = "{user_val}";
-                        userField.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        userField.dispatchEvent(new Event('change', {{bubbles:true}}));
-                        passField.value = "{pass_val}";
-                        passField.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        passField.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        const setReactValue = (el, val) => {{
+                            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            setter.call(el, val);
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        }};
+                        
+                        setReactValue(userField, "{user_val}");
+                        setReactValue(passField, "{pass_val}");
                         setTimeout(() => submitBtn.click(), 500);
                     }}
                 """)
@@ -152,13 +156,17 @@ class IMVUBrowserClient:
                     const userField = document.querySelector('form[name="login_form"] input[name="avatarname"]');
                     const passField = document.querySelector('form[name="login_form"] input[type="password"]');
                     const submitBtn = document.querySelector('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit');
+                    
                     if(userField && passField && submitBtn) {{
-                        userField.value = "{user_val}";
-                        userField.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        userField.dispatchEvent(new Event('change', {{bubbles:true}}));
-                        passField.value = "{pass_val}";
-                        passField.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        passField.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        const setReactValue = (el, val) => {{
+                            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            setter.call(el, val);
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        }};
+                        
+                        setReactValue(userField, "{user_val}");
+                        setReactValue(passField, "{pass_val}");
                         setTimeout(() => submitBtn.click(), 500);
                     }}
                 """)
