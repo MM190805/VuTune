@@ -257,6 +257,13 @@ class IMVUBrowserClient:
 
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
+            # ---------- 5. SAVE SESSION SO NEXT DEPLOY SKIPS LOGIN ----------
+            try:
+                await self.context.storage_state(path=state_path)
+                logger.info("Browser session saved to state.json. Next deploy will skip login/2FA!")
+            except Exception as e:
+                logger.warning(f"Could not save session state: {e}")
+
             # ---------- 6. START LIVE CAMERA + CHAT POLLING ----------
             logger.info(f"Started live camera and chat listener for room {room_id}...")
             task = asyncio.create_task(self._poll_chat(room_id, page, on_message_callback))
