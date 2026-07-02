@@ -232,10 +232,14 @@ class IMVUBrowserClient:
                     except Exception as e:
                         logger.warning(f"Click strategy {attempt+1} failed: {e}")
                         
-                    logger.info("Waiting 10s for UI to transition...")
-                    await page.wait_for_timeout(10000)
+                    logger.info("Waiting 5s for UI to transition...")
+                    await page.wait_for_timeout(5000)
+                    try:
+                        await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+                    except:
+                        pass
                 
-                await page.wait_for_timeout(5000)
+                await page.wait_for_timeout(2000)
                 await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
             except Exception as e:
                 logger.warning(f"Exception while looking for Join button: {e}")
