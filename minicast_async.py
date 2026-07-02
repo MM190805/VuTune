@@ -105,7 +105,11 @@ async def handle_client(reader, writer):
             try:
                 body = req_data.split(b"\r\n\r\n")[1].decode('utf-8')
                 code = body.split("code=")[1].split("&")[0]
-                room_manager.imvu.provide_2fa(code)
+                
+                # Write to file so main process can pick it up
+                with open('2fa_code.txt', 'w') as f:
+                    f.write(code)
+                    
                 writer.write(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n<h2>2FA Submitted! <a href='/debug'>Go back</a></h2>")
             except Exception as e:
                 writer.write(f"HTTP/1.0 500 ERROR\r\n\r\n{e}".encode())

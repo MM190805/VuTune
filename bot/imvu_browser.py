@@ -139,9 +139,39 @@ class IMVUBrowserClient:
                 # Submit via Enter key (most reliable human way)
                 await page.keyboard.press("Enter")
                 
-                logger.info("Pressed Enter to submit login modal! Waiting 10s for AJAX authentication to complete...")
-                await page.wait_for_timeout(10000)
-                    
+                logger.info("Pressed Enter! Waiting up to 60s for authentication or 2FA code...")
+                
+                for _ in range(30):
+                    await page.wait_for_timeout(2000)
+                    try:
+                        await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+                    except:
+                        pass
+                        
+                    if os.path.exists("2fa_code.txt"):
+                        with open("2fa_code.txt", "r") as f:
+                            code = f.read().strip()
+                        os.remove("2fa_code.txt")
+                        logger.warning(f"2FA code {code} detected! Submitting...")
+                        
+                        try:
+                            # Usually 2FA uses a generic text input or number input
+                            code_input = page.locator('form[name="login_form"] input').first
+                            await code_input.click(force=True)
+                            await page.keyboard.press("Control+A")
+                            await page.keyboard.press("Backspace")
+                            await page.keyboard.type(code, delay=100)
+                            await page.keyboard.press("Enter")
+                            logger.info("Submitted 2FA code!")
+                            await page.wait_for_timeout(10000)
+                        except Exception as e:
+                            logger.error(f"Error submitting 2FA: {e}")
+                        break
+                        
+                    # If modal disappeared, we successfully logged in!
+                    if not await page.locator('form[name="login_form"]').first.is_visible():
+                        logger.info("Login modal disappeared, authentication successful!")
+                        break
             except Exception as e:
                 logger.warning(f"Exception during login modal handling (or timeout): {e}")
                 logger.info("If no modal popped up, we should be entering the room now.")
