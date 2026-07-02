@@ -40,10 +40,10 @@ class IMVUBrowserClient:
                 '--js-flags=--max-old-space-size=256'
             ]
         )
-        import os
-        state_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'state.json')
         
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        import os
+        state_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'state.json')
         
         if os.path.exists(state_path):
             self.context = await self.browser.new_context(
@@ -56,7 +56,27 @@ class IMVUBrowserClient:
                 viewport={'width': 1280, 'height': 720},
                 user_agent=user_agent
             )
+        # INTERCEPT AND BLOCK HEAVY 3D ASSETS to prevent CPU/RAM crashes on free tier!
+        async def block_heavy_assets(route):
+            url = route.request.url.lower()
+            resource_type = route.request.resource_type
             
+            # Allow essential API requests and websockets
+            if resource_type in ["fetch", "xhr", "websocket", "document", "script"]:
+                # Check if it's a 3D asset fetch disguised as XHR
+                if any(ext in url for ext in [".cfl", ".chkn", ".xmf", ".xrf", ".xsf", ".crg", "texture", "mesh"]):
+                    await route.abort()
+                else:
+                    await route.continue_()
+            # Block all images, media, fonts, and stylesheets to save massive amounts of RAM
+            elif resource_type in ["image", "media", "font", "stylesheet"]:
+                await route.abort()
+            else:
+                await route.continue_()
+                
+        await self.context.route("**/*", block_heavy_assets)
+        await stealth_async(self.context)
+        
         self.username = self.credentials.get('username', 'VuTune')
         self.is_logged_in = True
 
