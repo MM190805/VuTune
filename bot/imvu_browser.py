@@ -210,11 +210,23 @@ class IMVUBrowserClient:
 
             # Try to click Join button if present
             try:
+                logger.info("Waiting 5s for React to hydrate auth state...")
+                await page.wait_for_timeout(5000)
+                
                 logger.info("Looking for Join button...")
                 join_btn = page.locator('button.join-cta, button:has-text("Join"), button:has-text("JOIN")').first
                 await join_btn.wait_for(timeout=20000)
+                
+                # Try clicking it normally first
                 await join_btn.click(force=True)
-                logger.info("Clicked Join button!")
+                logger.info("Clicked Join button! Waiting 3s to see if it worked...")
+                await page.wait_for_timeout(3000)
+                
+                # If the button is STILL there, it means React ignored the click. Use JS!
+                if await join_btn.is_visible():
+                    logger.warning("Playwright click was ignored by React! Forcing Javascript click...")
+                    await page.evaluate("document.querySelector('button.join-cta').click()")
+                    await page.wait_for_timeout(2000)
                 await page.wait_for_timeout(5000)
                 await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
             except Exception as e:
