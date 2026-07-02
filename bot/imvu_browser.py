@@ -34,12 +34,6 @@ class IMVUBrowserClient:
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-gpu",
-                "--disable-webgl",
-                "--disable-webgl2",
-                "--disable-3d-apis",
-                "--disable-accelerated-2d-canvas",
-                "--disable-accelerated-jpeg-decoding",
-                "--disable-accelerated-video-decode",
                 "--disable-dev-shm-usage",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
