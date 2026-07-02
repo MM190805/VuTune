@@ -4,12 +4,12 @@
     "password": "VuTune@1908!"
   },
   "icecast": {
-    "host": "localhost",
+    "host": "streaming.caster.fm",
     "port": 8000,
-    "mount": "/stream",
-    "source_password": "vutune_source",
-    "admin_password": "vutune_admin",
-    "public_url": "https://proprietary-wishlist-husband-bacteria.trycloudflare.com/stream"
+    "mount": "/eoHuT",
+    "source_password": "ckjHJngsXJ",
+    "admin_password": "ckjHJngsXJ",
+    "public_url": "http://streaming.caster.fm:8000/eoHuT"
   },
   "dashboard": {
     "port": 5000,
