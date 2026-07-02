@@ -30,10 +30,13 @@ class IMVUBrowserClient:
         self.browser = await self.playwright.chromium.launch(
             headless=True,
             args=[
-                '--disable-dev-shm-usage',
-                '--no-sandbox',
+                "--disable-blink-features=AutomationControlled",
+                "--use-gl=swiftshader",
+                "--enable-webgl",
+                "--ignore-gpu-blocklist",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
                 '--disable-setuid-sandbox',
-                '--disable-gpu',
                 '--js-flags=--max-old-space-size=256'
             ]
         )
@@ -138,18 +141,10 @@ class IMVUBrowserClient:
             await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
 
             logger.info(f"Navigating to room {room_id}...")
-            await page.goto(f"https://www.imvu.com/next/chat/room-{room_id}/")
+            await page.goto(f"https://www.imvu.com/next/chat/room-{room_id}/", timeout=60000)
             
-            # Wait for JOIN button and click it
-            try:
-                join_btn = page.locator('button.join-cta, button[title*="join in on the fun"], button:has-text("JOIN"), button:has-text("Join")').first
-                await join_btn.wait_for(timeout=10000)
-                await join_btn.click()
-                logger.info("Clicked JOIN button.")
-                # Give it a few seconds to load the chat UI
-                await page.wait_for_timeout(5000)
-            except Exception:
-                logger.warning("No JOIN button found, might already be joined or different UI.")
+            logger.info("Waiting 30 seconds for room to load...")
+            await page.wait_for_timeout(30000)
             
             try:
                 url = page.url
@@ -159,6 +154,17 @@ class IMVUBrowserClient:
                 await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
             except Exception as e:
                 logger.error(f"Failed to take debug screenshot: {e}")
+                
+            try:
+                logger.info("Looking for Join button...")
+                join_btn = page.locator('button:has-text("Join"), button:has-text("JOIN")').first
+                await join_btn.wait_for(timeout=30000)
+                await join_btn.click()
+                logger.info("Clicked Join button!")
+                await page.wait_for_timeout(5000)
+                await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
+            except Exception as e:
+                logger.error(f"Could not find or click Join button: {e}")
             
             # Start polling chat
             logger.info(f"Started chat listener for {room_id}...")
