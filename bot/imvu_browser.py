@@ -234,8 +234,17 @@ class IMVUBrowserClient:
                     is_vis = False
 
                 if not is_vis:
-                    logger.info(f"Attempt {attempt+1}: join-cta not visible — must be in the room!")
-                    break
+                    try:
+                        chat_vis = await page.locator('.chat-input, .input-area, [class*="chatInput"]').first.is_visible()
+                        if chat_vis:
+                            logger.info(f"Attempt {attempt+1}: join-cta not visible but chat input is! Must be in the room.")
+                            break
+                    except:
+                        pass
+                    
+                    logger.info(f"Attempt {attempt+1}: join-cta not visible yet, waiting 5s for React to hydrate...")
+                    await page.wait_for_timeout(5000)
+                    continue
 
                 logger.info(f"Attempt {attempt+1}: join-cta visible, clicking with Playwright trusted click...")
                 try:
@@ -258,6 +267,7 @@ class IMVUBrowserClient:
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
             # ---------- 5. SAVE SESSION SO NEXT DEPLOY SKIPS LOGIN ----------
+            state_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "state.json")
             try:
                 await self.context.storage_state(path=state_path)
                 logger.info("Browser session saved to state.json. Next deploy will skip login/2FA!")
