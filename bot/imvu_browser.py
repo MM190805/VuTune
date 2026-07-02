@@ -95,7 +95,7 @@ class IMVUBrowserClient:
             await page.wait_for_timeout(10000)
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
-            # ---------- 2. CHECK IF LOGGED OUT & LOGIN IN-ROOM ----------
+            # ---------- 2. CHECK IF LOGGED OUT & LOGIN IN-ROOM ----------            # Check for the "Log In" link in the top nav (meaning we are not authenticated)
             logger.info("Checking authentication state on room page...")
             login_trigger = page.locator('a.login-link, .sign-in a, a:has-text("Log In")').first
             
@@ -105,27 +105,37 @@ class IMVUBrowserClient:
             if await login_trigger.is_visible(timeout=5000):
                 logger.warning("Not logged in! Clicking top-right Log In link to open modal...")
                 await login_trigger.click(force=True)
-                await page.wait_for_timeout(3000)
                 
-                logger.info(f"Injecting credentials via JS (User: {user_val}, Pass length: {len(pass_val)})...")
-                await page.evaluate(f"""
-                    const userField = document.querySelector('form[name="login_form"] input[name="avatarname"]');
-                    const passField = document.querySelector('form[name="login_form"] input[type="password"]');
-                    const submitBtn = document.querySelector('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit');
-                    
-                    if(userField && passField && submitBtn) {{
-                        const setReactValue = (el, val) => {{
-                            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                            setter.call(el, val);
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                        }};
-                        
-                        setReactValue(userField, "{user_val}");
-                        setReactValue(passField, "{pass_val}");
-                        setTimeout(() => submitBtn.click(), 500);
-                    }}
-                """)
+                logger.info("Waiting up to 10s for login modal to appear...")
+                modal = page.locator('form[name="login_form"]').first
+                await modal.wait_for(state="visible", timeout=10000)
+                
+                logger.info(f"Typing credentials like a human (User: {user_val})...")
+                
+                # Type Username
+                user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
+                await user_input.click(force=True)
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+                await page.keyboard.type(user_val, delay=100)
+                
+                # Type Password
+                pass_input = page.locator('form[name="login_form"] input[type="password"]').first
+                box = await pass_input.bounding_box()
+                if box:
+                    await page.mouse.click(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
+                else:
+                    await pass_input.click(force=True)
+                
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+                await page.keyboard.type(pass_val, delay=100)
+                
+                # Submit
+                submit_btn = page.locator('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit').first
+                await submit_btn.click(force=True)
+                
+                logger.info("Submitted login modal! Waiting 10s for AJAX authentication to complete...")
                 await page.wait_for_timeout(10000)
             else:
                 logger.info("No Log In link found at top right.")
@@ -147,36 +157,47 @@ class IMVUBrowserClient:
                 logger.warning(f"Join button error: {e}")
 
             # ---------- 4. HANDLE POST-JOIN LOGIN MODAL ----------
-            logger.info("Checking if a login modal popped up after clicking Join...")
-            await page.wait_for_timeout(3000)
+            logger.info("Waiting up to 10s to see if a login modal popped up after clicking Join...")
             modal = page.locator('form[name="login_form"]').first
-            if await modal.is_visible(timeout=2000):
-                logger.warning("Modal detected! Injecting credentials via JS...")
-                await page.evaluate(f"""
-                    const userField = document.querySelector('form[name="login_form"] input[name="avatarname"]');
-                    const passField = document.querySelector('form[name="login_form"] input[type="password"]');
-                    const submitBtn = document.querySelector('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit');
-                    
-                    if(userField && passField && submitBtn) {{
-                        const setReactValue = (el, val) => {{
-                            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                            setter.call(el, val);
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                        }};
-                        
-                        setReactValue(userField, "{user_val}");
-                        setReactValue(passField, "{pass_val}");
-                        setTimeout(() => submitBtn.click(), 500);
-                    }}
-                """)
-                await page.wait_for_timeout(10000)
+            
+            try:
+                await modal.wait_for(state="visible", timeout=10000)
+                logger.warning("Modal detected! Typing credentials like a real human...")
                 
-                # Click Join again
+                # Type Username
+                user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
+                await user_input.click(force=True)
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+                await page.keyboard.type(user_val, delay=100)
+                
+                # Type Password
+                pass_input = page.locator('form[name="login_form"] input[type="password"]').first
+                box = await pass_input.bounding_box()
+                if box:
+                    await page.mouse.click(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
+                else:
+                    await pass_input.click(force=True)
+                
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+                await page.keyboard.type(pass_val, delay=100)
+                
+                # Submit
+                submit_btn = page.locator('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit').first
+                await submit_btn.click(force=True)
+                
+                logger.info("Submitted post-join modal! Waiting 15s...")
+                await page.wait_for_timeout(15000)
+                
+                # Click Join again just in case it didn't auto-join
                 join_btn = page.locator('button:has-text("JOIN"), button:has-text("Join"), .action-join').first
                 if await join_btn.is_visible(timeout=3000):
                     await join_btn.click(force=True)
                     logger.info("Clicked Join button AGAIN after post-join login!")
+                    
+            except Exception as e:
+                logger.info("No modal popped up after clicking Join. We should be entering the room now.")
 
             # ---------- 3. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
             # We apply the blocker NOW so that the login form's
