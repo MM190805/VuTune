@@ -77,8 +77,8 @@ class IMVUBrowserClient:
             logger.info("Checking authentication...")
             await page.goto("https://www.imvu.com/next/login/", timeout=60000)
             await page.wait_for_timeout(4000)
-            await page.screenshot(path="debug.png")
-            logger.info("Saved initial page screenshot to debug.png")
+            await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
+            logger.info("Saved initial page screenshot to debug.jpg")
             
             if "login" in page.url.lower():
                 logger.info("Session invalid on Cloud. Attempting automated login...")
@@ -96,8 +96,8 @@ class IMVUBrowserClient:
                     
                     logger.info("Waiting after login click...")
                     await page.wait_for_timeout(5000)
-                    await page.screenshot(path="debug.png")
-                    logger.info("Saved post-login screenshot to debug.png")
+                    await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
+                    logger.info("Saved post-login screenshot to debug.jpg")
                     
                     if "login" in page.url.lower():
                         logger.warning("Still on login page! Likely hit 2FA or Captcha. Waiting for user input via /debug...")
@@ -113,7 +113,7 @@ class IMVUBrowserClient:
                 except Exception as e:
                     logger.error(f"Automated login failed: {e}")
                     
-            await page.screenshot(path="debug.png")
+            await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
 
             logger.info(f"Navigating to room {room_id}...")
             await page.goto(f"https://www.imvu.com/next/chat/room-{room_id}/")
@@ -134,7 +134,7 @@ class IMVUBrowserClient:
                 title = await page.title()
                 logger.info(f"DEBUG - Current URL: {url}")
                 logger.info(f"DEBUG - Page Title: {title}")
-                await page.screenshot(path="debug.png")
+                await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
             except Exception as e:
                 logger.error(f"Failed to take debug screenshot: {e}")
             

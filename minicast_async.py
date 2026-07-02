@@ -78,9 +78,9 @@ async def handle_client(reader, writer):
             # HTML page with 2FA form and base64 embedded image
             try:
                 import base64
-                with open("debug.png", "rb") as f:
+                with open("debug.jpg", "rb") as f:
                     b64_img = base64.b64encode(f.read()).decode('utf-8')
-                img_src = f"data:image/png;base64,{b64_img}"
+                img_src = f"data:image/jpeg;base64,{b64_img}"
             except Exception:
                 img_src = ""
 
@@ -134,6 +134,11 @@ async def handle_client(reader, writer):
         pass
     finally:
         clients.discard(writer)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
         if b"PUT" in req_data or b"SOURCE" in req_data:
             source_connected = False
 
