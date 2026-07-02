@@ -175,19 +175,17 @@ class IMVUBrowserClient:
             except Exception as e:
                 logger.error(f"Could not find or click Join button: {e}")
             
-            # Start polling chat
-            logger.info(f"Started chat listener for {room_id}...")
-            task = asyncio.create_task(self._poll_chat(room_id, on_message_callback))
+            # Start polling chat and updating live camera
+            logger.info(f"Started live camera and chat listener for {room_id}...")
+            task = asyncio.create_task(self._poll_chat(room_id, page, on_message_callback))
             self.tasks[room_id] = task
             return True
         except Exception as e:
             logger.error(f"Error joining room {room_id}: {e}")
             return False
 
-    async def _poll_chat(self, room_id, on_message_callback):
-        logger.info(f"Started chat listener for {room_id}...")
-        page = self.pages.get(room_id)
-        
+    async def _poll_chat(self, room_id, page, callback):
+        logger.info(f"Chat listener active for room {room_id}")
         js_code = """
         () => {
             let msgs = [];
@@ -240,7 +238,13 @@ class IMVUBrowserClient:
                         await on_message_callback("User", msg)
             except Exception as e:
                 logger.error(f"Error in chat listener: {e}")
-            await asyncio.sleep(1.0)
+                
+            try:
+                await page.screenshot(path="debug.jpg", type="jpeg", quality=50)
+            except Exception:
+                pass
+                
+            await asyncio.sleep(2.0)
 
 
     async def send_message(self, room_id, text):
