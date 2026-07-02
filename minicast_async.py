@@ -100,7 +100,6 @@ async def handle_client(reader, writer):
                 body = req_data.split(b"\r\n\r\n")[1].decode('utf-8')
                 code = body.split("code=")[1].split("&")[0]
                 
-                # Write to file so main process can pick it up
                 with open('2fa_code.txt', 'w') as f:
                     f.write(code)
                     
@@ -110,10 +109,27 @@ async def handle_client(reader, writer):
             await writer.drain()
             return
             
+        elif b"GET /logs" in req_data:
+            try:
+                import os
+                if os.path.exists("vutune.log"):
+                    with open("vutune.log", "r") as f:
+                        lines = f.readlines()
+                        log_data = "".join(lines[-100:])
+                else:
+                    log_data = "No vutune.log found."
+                writer.write(b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\n" + log_data.encode('utf-8'))
+            except Exception as e:
+                writer.write(f"HTTP/1.0 500 ERROR\r\n\r\n{e}".encode())
+            await writer.drain()
+            return
+            
         elif b"GET /stream" in req_data:
             writer.write(
                 b"HTTP/1.1 200 OK\r\n"
                 b"Content-Type: audio/mpeg\r\n"
+                b"icy-name: VuTune Radio\r\n"
+                b"icy-br: 128\r\n"
                 b"Cache-Control: no-cache\r\n"
                 b"Connection: keep-alive\r\n"
                 b"Content-Length: 999999999999\r\n"
