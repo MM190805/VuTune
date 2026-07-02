@@ -95,7 +95,42 @@ class IMVUBrowserClient:
             await page.wait_for_timeout(10000)
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
-            # ---------- 2. CLICK JOIN & HANDLE LOGIN IF IT POPS UP ----------
+            # ---------- 2. CHECK IF LOGGED OUT & LOGIN IN-ROOM ----------
+            # Check for the "Log In" link in the top nav (meaning we are not authenticated)
+            logger.info("Checking authentication state on room page...")
+            login_trigger = page.locator('a.login-link, .sign-in a, a:has-text("Log In")').first
+            
+            if await login_trigger.is_visible(timeout=5000):
+                logger.warning("Not logged in! Clicking top-right Log In link to open modal...")
+                await login_trigger.click(force=True)
+                
+                # Wait for modal to appear
+                logger.info("Waiting for login modal to appear...")
+                await page.wait_for_timeout(3000)
+                
+                user_val = self.credentials.get("username", "")
+                pass_val = self.credentials.get("password", "")
+                
+                user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
+                await user_input.wait_for(state="attached", timeout=10000)
+                await user_input.fill(user_val, force=True)
+                
+                pass_input = page.locator('form[name="login_form"] input[type="password"]').first
+                await pass_input.fill(pass_val, force=True)
+                
+                submit_btn = page.locator('form[name="login_form"] label.submit').first
+                await submit_btn.click(force=True)
+                
+                logger.info("Submitted login modal! Waiting 10s for AJAX authentication to complete...")
+                await page.wait_for_timeout(10000)
+            else:
+                logger.info("No Log In link found - we are already authenticated!")
+
+            url = page.url
+            title = await page.title()
+            logger.info(f"Room initialization complete - URL: {url} | Title: {title}")
+
+            # ---------- 3. CLICK JOIN BUTTON ----------
             try:
                 logger.info("Looking for Join button...")
                 join_btn = page.locator('button:has-text("JOIN"), button:has-text("Join"), .action-join').first
@@ -110,41 +145,6 @@ class IMVUBrowserClient:
                     """)
             except Exception as e:
                 logger.warning(f"Join button error: {e}")
-
-            logger.info("Checking if a login modal appeared after clicking Join...")
-            await page.wait_for_timeout(3000)
-            
-            modal = page.locator('form[name="login_form"]').first
-            if await modal.is_visible(timeout=5000):
-                logger.warning("Login modal detected! We were not authenticated. Filling credentials...")
-                
-                user_val = self.credentials.get("username", "")
-                pass_val = self.credentials.get("password", "")
-                
-                user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
-                await user_input.fill(user_val, force=True)
-                
-                pass_input = page.locator('form[name="login_form"] input[type="password"]').first
-                await pass_input.fill(pass_val, force=True)
-                
-                submit_btn = page.locator('form[name="login_form"] label.submit').first
-                await submit_btn.click(force=True)
-                
-                logger.info("Submitted login modal. Waiting 10s for authentication...")
-                await page.wait_for_timeout(10000)
-                
-                # After logging in, the Join button might still need to be clicked again
-                logger.info("Looking for Join button again post-login...")
-                join_btn2 = page.locator('button:has-text("JOIN"), button:has-text("Join")').first
-                if await join_btn2.is_visible(timeout=3000):
-                    await join_btn2.click(force=True)
-                    logger.info("Clicked Join button AGAIN after login!")
-            else:
-                logger.info("No login modal popped up, meaning we successfully joined!")
-
-            url = page.url
-            title = await page.title()
-            logger.info(f"Room entry complete - URL: {url} | Title: {title}")
 
             # ---------- 3. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
             # We apply the blocker NOW so that the login form's
