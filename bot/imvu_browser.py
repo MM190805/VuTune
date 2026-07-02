@@ -194,55 +194,62 @@ class IMVUBrowserClient:
             # async def block_heavy_assets(route): ...
             # await page.route("**/*", block_heavy_assets)
 
-            # Try to click Join button if present
+            # ---------- 4. NAVIGATE BACK TO ROOM AND CLICK JOIN ----------
+            # After login/2FA, IMVU reloads the page. We must re-navigate to
+            # the room URL to get a fresh page, then click the Join button.
+            logger.info("Re-navigating to room after auth to get a fresh page...")
             try:
-                logger.info("Waiting 5s for React to hydrate auth state...")
-                await page.wait_for_timeout(5000)
-                
-                logger.info("Looking for Join button...")
-                for attempt in range(4):
-                    join_btn = page.locator('button.join-cta').first
-                    if not await join_btn.is_visible():
-                        logger.info("Join button is gone. We must be in the room!")
-                        break
-                        
-                    logger.info(f"Join button visible! Attempt {attempt+1} to click...")
-                    try:
-                        if attempt == 0:
-                            # Strategy 1: Standard Playwright trusted click (bypasses interceptors with force=True)
-                            await join_btn.click(force=True)
-                        elif attempt == 1:
-                            # Strategy 2: Raw JS node.click()
-                            await join_btn.evaluate("node => node.click()")
-                        elif attempt == 2:
-                            # Strategy 3: Full React-compliant MouseEvent dispatch
-                            await page.evaluate('''() => {
-                                const btn = document.querySelector('button.join-cta');
-                                if (btn) {
-                                    btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-                                    btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                                    btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-                                }
-                            }''')
-                        else:
-                            # Strategy 4: Raw OS-level mouse click on exact visual coordinates
-                            box = await join_btn.bounding_box()
-                            if box:
-                                await page.mouse.click(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
-                    except Exception as e:
-                        logger.warning(f"Click strategy {attempt+1} failed: {e}")
-                        
-                    logger.info("Waiting 5s for UI to transition...")
-                    await page.wait_for_timeout(5000)
-                    try:
-                        await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
-                    except:
-                        pass
-                
-                await page.wait_for_timeout(2000)
-                await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+                await page.goto(
+                    f"https://www.imvu.com/next/chat/room-{room_id}/",
+                    wait_until="domcontentloaded",
+                    timeout=60000
+                )
             except Exception as e:
-                logger.warning(f"Exception while looking for Join button: {e}")
+                logger.warning(f"Room re-navigation timed out: {e}")
+
+            logger.info("Waiting 15s for the room UI to fully render...")
+            await page.wait_for_timeout(15000)
+            await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+
+            # Nuclear JS approach: keep clicking any join button until it disappears
+            logger.info("Starting nuclear JS join loop...")
+            for attempt in range(10):
+                try:
+                    await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+                except:
+                    pass
+
+                clicked = await page.evaluate('''
+                    () => {
+                        // Try button.join-cta first
+                        let btn = document.querySelector('button.join-cta');
+                        // Fallback: any button whose text includes JOIN
+                        if (!btn) {
+                            for (let b of document.querySelectorAll('button')) {
+                                if (b.innerText && b.innerText.toUpperCase().includes('JOIN')) {
+                                    btn = b; break;
+                                }
+                            }
+                        }
+                        if (btn) {
+                            btn.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true}));
+                            btn.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true, cancelable:true}));
+                            btn.dispatchEvent(new MouseEvent('click',     {bubbles:true, cancelable:true}));
+                            btn.click();
+                            return btn.className + " | " + btn.innerText.trim();
+                        }
+                        return null;
+                    }
+                ''')
+
+                if clicked:
+                    logger.info(f"Attempt {attempt+1}: Clicked [{clicked}]. Waiting 5s...")
+                    await page.wait_for_timeout(5000)
+                else:
+                    logger.info(f"Attempt {attempt+1}: No join button found — we are in the room!")
+                    break
+
+            await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
             # ---------- 6. START LIVE CAMERA + CHAT POLLING ----------
             logger.info(f"Started live camera and chat listener for room {room_id}...")
