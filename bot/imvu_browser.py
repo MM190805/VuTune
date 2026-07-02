@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import stealth
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class IMVUBrowserClient:
             
         try:
             page = await self.context.new_page()
-            await stealth_async(page)
+            await stealth(page)
             self.pages[room_id] = page
             
             async def abort_route(route):
