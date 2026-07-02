@@ -51,7 +51,7 @@ class IMVUBrowserClient:
             self.pages[room_id] = page
             
             async def abort_route(route):
-                if route.request.resource_type in ["image", "stylesheet", "font", "media"]:
+                if route.request.resource_type in ["media"]:
                     await route.abort()
                 else:
                     await route.continue_()
