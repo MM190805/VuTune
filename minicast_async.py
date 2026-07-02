@@ -75,11 +75,19 @@ async def handle_client(reader, writer):
             return
 
         elif b"GET /debug " in req_data:
-            # HTML page with 2FA form
-            html = b"""HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n
+            # HTML page with 2FA form and base64 embedded image
+            try:
+                import base64
+                with open("debug.png", "rb") as f:
+                    b64_img = base64.b64encode(f.read()).decode('utf-8')
+                img_src = f"data:image/png;base64,{b64_img}"
+            except Exception:
+                img_src = ""
+
+            html = f"""HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n
             <html><body style="background:#111; color:white; font-family:sans-serif; text-align:center;">
                 <h2>Live Bot Camera</h2>
-                <img src="/debug/screenshot" style="max-width:80%; border:2px solid #444; border-radius:8px;"/><br><br>
+                <img src="{img_src}" style="max-width:80%; border:2px solid #444; border-radius:8px;"/><br><br>
                 <h3>If you see a 2FA code prompt above, enter it here:</h3>
                 <form method="POST" action="/debug/2fa">
                     <input type="text" name="code" placeholder="Enter 2FA Code" style="padding:10px; font-size:16px;" required/>
@@ -88,7 +96,7 @@ async def handle_client(reader, writer):
                 <br>
                 <button onclick="location.reload()" style="padding:10px;">Refresh Camera</button>
             </body></html>
-            """
+            """.encode('utf-8')
             writer.write(html)
             await writer.drain()
             return
@@ -103,19 +111,6 @@ async def handle_client(reader, writer):
                 writer.write(f"HTTP/1.0 500 ERROR\r\n\r\n{e}".encode())
             await writer.drain()
             return
-            
-        elif b"GET /debug/screenshot" in req_data:
-            try:
-                import os
-                if os.path.exists("debug.png"):
-                    with open("debug.png", "rb") as f:
-                        data = f.read()
-                    writer.write(b"HTTP/1.0 200 OK\r\nContent-Type: image/png\r\n\r\n" + data)
-                else:
-                    writer.write(b"HTTP/1.0 404 Not Found\r\n\r\nNo screenshot available.")
-            except Exception as e:
-                writer.write(b"HTTP/1.0 500 Internal Server Error\r\n\r\n" + str(e).encode())
-            await writer.drain()
             
         elif b"GET /stream" in req_data:
             writer.write(
