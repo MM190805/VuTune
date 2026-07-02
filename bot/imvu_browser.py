@@ -96,48 +96,35 @@ class IMVUBrowserClient:
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
             # ---------- 2. CHECK IF LOGGED OUT & LOGIN IN-ROOM ----------
-            # Check for the "Log In" link in the top nav (meaning we are not authenticated)
             logger.info("Checking authentication state on room page...")
             login_trigger = page.locator('a.login-link, .sign-in a, a:has-text("Log In")').first
+            
+            user_val = self.credentials.get("username", "")
+            pass_val = self.credentials.get("password", "")
             
             if await login_trigger.is_visible(timeout=5000):
                 logger.warning("Not logged in! Clicking top-right Log In link to open modal...")
                 await login_trigger.click(force=True)
-                
-                # Wait for modal to appear
-                logger.info("Waiting for login modal to appear...")
                 await page.wait_for_timeout(3000)
                 
-                user_val = self.credentials.get("username", "")
-                pass_val = self.credentials.get("password", "")
-                
-                user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
-                await user_input.wait_for(state="attached", timeout=10000)
-                await user_input.click(force=True)
-                await user_input.fill("")  # Clear existing
-                await user_input.press_sequentially(user_val, delay=20)
-                
-                pass_input = page.locator('form[name="login_form"] input[type="password"]').first
-                await pass_input.click(force=True)
-                await pass_input.fill("")  # Clear existing
-                await pass_input.press_sequentially(pass_val, delay=20)
-                
-                submit_btn = page.locator(
-                    'form[name="login_form"] button.btn-primary, '
-                    'form[name="login_form"] button:has-text("Log In"), '
-                    'form[name="login_form"] button:has-text("LOG IN"), '
-                    'form[name="login_form"] label.submit'
-                ).first
-                await submit_btn.click(force=True)
-                
-                logger.info("Submitted login modal! Waiting 10s for AJAX authentication to complete...")
+                logger.info(f"Injecting credentials via JS (User: {user_val}, Pass length: {len(pass_val)})...")
+                await page.evaluate(f"""
+                    const userField = document.querySelector('form[name="login_form"] input[name="avatarname"]');
+                    const passField = document.querySelector('form[name="login_form"] input[type="password"]');
+                    const submitBtn = document.querySelector('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit');
+                    if(userField && passField && submitBtn) {{
+                        userField.value = "{user_val}";
+                        userField.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        userField.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        passField.value = "{pass_val}";
+                        passField.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        passField.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        setTimeout(() => submitBtn.click(), 500);
+                    }}
+                """)
                 await page.wait_for_timeout(10000)
             else:
-                logger.info("No Log In link found - we are already authenticated!")
-
-            url = page.url
-            title = await page.title()
-            logger.info(f"Room initialization complete - URL: {url} | Title: {title}")
+                logger.info("No Log In link found at top right.")
 
             # ---------- 3. CLICK JOIN BUTTON ----------
             try:
@@ -154,6 +141,34 @@ class IMVUBrowserClient:
                     """)
             except Exception as e:
                 logger.warning(f"Join button error: {e}")
+
+            # ---------- 4. HANDLE POST-JOIN LOGIN MODAL ----------
+            logger.info("Checking if a login modal popped up after clicking Join...")
+            await page.wait_for_timeout(3000)
+            modal = page.locator('form[name="login_form"]').first
+            if await modal.is_visible(timeout=2000):
+                logger.warning("Modal detected! Injecting credentials via JS...")
+                await page.evaluate(f"""
+                    const userField = document.querySelector('form[name="login_form"] input[name="avatarname"]');
+                    const passField = document.querySelector('form[name="login_form"] input[type="password"]');
+                    const submitBtn = document.querySelector('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit');
+                    if(userField && passField && submitBtn) {{
+                        userField.value = "{user_val}";
+                        userField.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        userField.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        passField.value = "{pass_val}";
+                        passField.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        passField.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        setTimeout(() => submitBtn.click(), 500);
+                    }}
+                """)
+                await page.wait_for_timeout(10000)
+                
+                # Click Join again
+                join_btn = page.locator('button:has-text("JOIN"), button:has-text("Join"), .action-join').first
+                if await join_btn.is_visible(timeout=3000):
+                    await join_btn.click(force=True)
+                    logger.info("Clicked Join button AGAIN after post-join login!")
 
             # ---------- 3. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
             # We apply the blocker NOW so that the login form's
