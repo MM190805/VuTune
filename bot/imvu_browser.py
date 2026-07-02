@@ -145,8 +145,9 @@ class IMVUBrowserClient:
                     except Exception:
                         logger.warning("URL did not change in 25 seconds. May be stuck on 2FA or Captcha.")
 
-                    await page.wait_for_timeout(2000)
+                    await page.wait_for_timeout(8000)  # Give IMVU Next session time to fully initialize
                     await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+                    logger.info(f"Post-login URL: {page.url}")
                     logger.info("Saved post-login screenshot to debug.jpg")
 
                     # ---------- 3. HANDLE 2FA IF PRESENT ----------
