@@ -64,12 +64,13 @@ class IMVUBrowserClient:
 
         await _stealth.apply_stealth_async(self.context)
         
-        # Block heavy assets to save RAM (Fixes 512MB OOM crash on Render)
+        # Block heavy 3D assets to save RAM (Fixes 512MB OOM crash on Render)
+        # We must allow 'image' and 'font' so the React UI doesn't crash to a blank screen!
         async def intercept_route(route):
             req = route.request
-            if req.resource_type in ["image", "media", "font"]:
+            if req.resource_type in ["media"]:
                 await route.abort()
-            elif req.url.lower().endswith(('.cfl', '.xsf', '.chkn', '.png', '.jpg', '.jpeg', '.mp3', '.ogg', '.webp', '.gif')):
+            elif req.url.lower().endswith(('.cfl', '.xsf', '.chkn', '.xmf', '.xrf', '.xaf', '.mp3', '.ogg', '.mp4')):
                 await route.abort()
             else:
                 await route.continue_()
