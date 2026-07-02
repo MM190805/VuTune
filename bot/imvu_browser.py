@@ -64,7 +64,7 @@ class IMVUBrowserClient:
             
             # Wait for JOIN button and click it
             try:
-                join_btn = page.locator('button', has_text="JOIN")
+                join_btn = page.locator('button.join-cta, button[title*="join in on the fun"], button:has-text("JOIN"), button:has-text("Join")').first
                 await join_btn.wait_for(timeout=10000)
                 await join_btn.click()
                 logger.info("Clicked JOIN button.")
