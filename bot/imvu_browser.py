@@ -80,95 +80,63 @@ class IMVUBrowserClient:
             await _stealth.apply_stealth_async(page)
             self.pages[room_id] = page
 
-            # ---------- 1. NAVIGATE TO LOGIN PAGE ----------
-            logger.info("Checking authentication...")
-            await page.goto("https://www.imvu.com/next/login/", timeout=60000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(5000)
-            await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
-            logger.info("Saved initial page screenshot to debug.jpg")
+            # ---------- 1. NAVIGATE DIRECTLY TO ROOM ----------
+            logger.info(f"Navigating directly to room {room_id}...")
+            try:
+                await page.goto(
+                    f"https://www.imvu.com/next/chat/room-{room_id}/",
+                    wait_until="domcontentloaded",
+                    timeout=90000
+                )
+            except Exception as e:
+                logger.warning(f"Room goto timed out (WebGL heavy page): {e}")
 
-            # ---------- 2. LOGIN IF NEEDED ----------
-            if "login" in page.url.lower() or "welcome" in (await page.title()).lower():
-                logger.info("Session invalid. Attempting automated login...")
-                try:
-                    # Open the login modal (sometimes the form is already visible)
-                    logger.info("Opening login modal...")
-                    try:
-                        await page.locator("button.sign-in").first.click(timeout=5000, force=True)
-                        await page.wait_for_timeout(2000)
-                    except Exception as e:
-                        logger.warning(f"Modal trigger failed, trying JS fallback: {e}")
-                        try:
-                            await page.evaluate("""
-                                const el = Array.from(document.querySelectorAll('a,button,span'))
-                                    .find(e => e.innerText && e.innerText.toLowerCase().includes('log in'));
-                                if (el) el.click();
-                            """)
-                            await page.wait_for_timeout(2000)
-                        except Exception:
-                            logger.info("No modal trigger found, assuming form is already visible.")
-
-                    # Fill username using exact DOM structure
-                    logger.info("Waiting for username input...")
-                    user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
-                    await user_input.wait_for(state="attached", timeout=15000)
-                    await user_input.fill(self.credentials.get("username", ""), force=True)
-
-                    # Fill password
-                    logger.info("Filling password...")
-                    pass_input = page.locator('form[name="login_form"] input[type="password"], form[name="login_form"] input[name="password"]').first
-                    await pass_input.fill(self.credentials.get("password", ""), force=True)
-
-                    # Click submit (which is actually a <label> tag, not a <button>)
-                    logger.info("Clicking login...")
-                    try:
-                        submit_btn = page.locator('form[name="login_form"] label.submit').first
-                        await submit_btn.click(timeout=5000, force=True)
-                    except Exception as e:
-                        logger.warning(f"Submit click failed, trying JS fallback: {e}")
-                        await page.evaluate("""
-                            const btn = document.querySelector('form[name="login_form"] label.submit');
-                            if (btn) btn.click();
-                        """)
-
-                    # IMVU login is AJAX-based. After submitting, just wait then
-                    # navigate to the homepage to see if we're authenticated.
-                    logger.info("Waiting 8 seconds for IMVU AJAX login to complete...")
-                    await page.wait_for_timeout(8000)
-
-                    logger.info("Navigating to IMVU homepage to verify login...")
-                    await page.goto("https://www.imvu.com/next/", wait_until="domcontentloaded", timeout=30000)
-                    await page.wait_for_timeout(3000)
-                    await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
-                    logger.info(f"Post-login URL: {page.url}")
-
-                    # ---------- 3. HANDLE 2FA IF NEEDED ----------
-                    # Check if login form is still showing (meaning login failed or needs 2FA)
-                    login_form_count = await page.locator('input[name="avatarname"], input[type="password"]').count()
-                    if login_form_count > 0:
-                        logger.warning("Login form still present — may need 2FA or captcha. Waiting for user input via /debug...")
-                        await self.two_factor_event.wait()
-                        code = self.two_factor_code
-                        logger.info("Received 2FA code! Submitting...")
-                        await page.locator(
-                            'input[name="code"]:visible, input[type="number"]:visible'
-                        ).first.fill(code, timeout=5000)
-                        await page.locator(
-                            'button[type="submit"]:visible, button:has-text("Submit"):visible, button:has-text("Verify"):visible'
-                        ).first.click(timeout=5000)
-                        await page.wait_for_timeout(5000)
-                        await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
-                        self.two_factor_event.clear()
-                    else:
-                        logger.info("Login successful! No login form detected on homepage.")
-
-                except Exception as e:
-                    logger.error(f"Automated login failed: {e}")
-
+            # Wait for the SPA to initialize
+            await page.wait_for_timeout(10000)
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
-            # ---------- 4. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
-            # We apply the blocker NOW (post-login) so that the login form's
+            # ---------- 2. CHECK IF LOGGED OUT & LOGIN IN-ROOM ----------
+            # Check for the "Log In" button in the top nav (meaning we are not authenticated)
+            login_trigger = page.locator('button.sign-in, nav.logged-out button:has-text("Log In")').first
+            
+            if await login_trigger.is_visible(timeout=5000):
+                logger.info("Not logged in! Clicking top-right Log In button to open modal...")
+                await login_trigger.click(force=True)
+                
+                # Wait for modal to appear
+                logger.info("Waiting for login modal to appear...")
+                await page.wait_for_timeout(3000)
+                
+                # Fill credentials
+                user_val = self.credentials.get("username", "")
+                pass_val = self.credentials.get("password", "")
+                logger.info(f"Filling credentials for user: {user_val}...")
+                
+                user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
+                await user_input.wait_for(state="attached", timeout=10000)
+                await user_input.fill(user_val, force=True)
+                
+                pass_input = page.locator('form[name="login_form"] input[type="password"], form[name="login_form"] input[name="password"]').first
+                await pass_input.fill(pass_val, force=True)
+                
+                logger.info("Clicking modal submit button...")
+                submit_btn = page.locator('form[name="login_form"] label.submit').first
+                await submit_btn.click(force=True)
+                
+                logger.info("Submitted login from room page! Waiting 10s for AJAX authentication to complete...")
+                await page.wait_for_timeout(10000)
+                
+                # Take screenshot to verify we are logged in
+                await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+            else:
+                logger.info("No Log In button found - we are likely already authenticated!")
+
+            url = page.url
+            title = await page.title()
+            logger.info(f"Room initialization complete - URL: {url} | Title: {title}")
+
+            # ---------- 3. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
+            # We apply the blocker NOW so that the login form's
             # CSS/images still load correctly during authentication.
             async def block_heavy_assets(route):
                 rt = route.request.resource_type
@@ -184,53 +152,6 @@ class IMVUBrowserClient:
                     await route.continue_()
 
             await page.route("**/*", block_heavy_assets)
-
-            # ---------- 5. NAVIGATE TO ROOM ----------
-            logger.info(f"Navigating to room {room_id}...")
-            try:
-                await page.goto(
-                    f"https://www.imvu.com/next/chat/room-{room_id}/",
-                    wait_until="domcontentloaded",
-                    timeout=90000
-                )
-            except Exception as e:
-                logger.warning(f"Room goto timed out (WebGL heavy page): {e}")
-
-            # Wait for the page to settle after navigation
-            await page.wait_for_timeout(15000)
-            
-            # ---------- 5.5. HANDLE IN-ROOM LOGIN MODAL ----------
-            try:
-                # IMVU sometimes forces a login popup over the room if the session didn't stick
-                in_room_login = page.locator('input[type="password"]').first
-                if await in_room_login.is_visible(timeout=5000):
-                    logger.warning("Room forced a login popup! Attempting to login directly from the room page...")
-                    
-                    user_val = self.credentials.get("username", "")
-                    pass_val = self.credentials.get("password", "")
-                    logger.info(f"Filling credentials (User: {user_val}, Pass length: {len(pass_val)})...")
-                    
-                    # Fill username
-                    user_input = page.locator('input[name="avatarname"], input[type="email"], input[type="text"]').first
-                    await user_input.fill(user_val, force=True)
-                    
-                    # Fill password
-                    await in_room_login.fill(pass_val, force=True)
-                    
-                    # Click submit
-                    logger.info("Clicking login on room page...")
-                    submit_btn = page.locator('label.submit, .submit, button:has-text("LOG IN")').first
-                    await submit_btn.click(force=True)
-                    
-                    logger.info("Submitted login. Waiting 8s for AJAX to complete...")
-                    await page.wait_for_timeout(8000)
-            except Exception as e:
-                logger.info(f"No in-room login modal detected (which is good).")
-
-            url = page.url
-            title = await page.title()
-            logger.info(f"Room page loaded - URL: {url} | Title: {title}")
-            await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
             # Try to click Join button if present
             try:
