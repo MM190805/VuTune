@@ -11,7 +11,6 @@ import threading
 import logging
 import yt_dlp
 import sys
-import imageio_ffmpeg
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +90,7 @@ class MusicPlayer:
 
         # ffmpeg reads from the direct URL and pushes to Icecast ─────────
         ffmpeg_cmd = [
-            imageio_ffmpeg.get_ffmpeg_exe(),
+            'ffmpeg',
             '-re',                      # read at native speed (real-time)
             '-i', song['url'],          # direct media URL
             '-acodec', 'libmp3lame',
