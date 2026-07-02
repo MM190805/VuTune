@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +39,19 @@ class IMVUBrowserClient:
         )
         import os
         state_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'state.json')
+        
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        
         if os.path.exists(state_path):
             self.context = await self.browser.new_context(
                 viewport={'width': 1280, 'height': 720},
+                user_agent=user_agent,
                 storage_state=state_path
             )
         else:
             self.context = await self.browser.new_context(
-                viewport={'width': 1280, 'height': 720}
+                viewport={'width': 1280, 'height': 720},
+                user_agent=user_agent
             )
             
         self.username = self.credentials.get('username', 'VuTune')
@@ -56,6 +63,7 @@ class IMVUBrowserClient:
             
         try:
             page = await self.context.new_page()
+            await stealth_async(page)
             self.pages[room_id] = page
             
             async def abort_route(route):
