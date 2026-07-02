@@ -1,0 +1,27 @@
+{
+  "imvu": {
+    "username": "VuTune",
+    "password": "VuTune@1908!"
+  },
+  "icecast": {
+    "host": "localhost",
+    "port": 8000,
+    "mount": "/stream",
+    "source_password": "vutune_source",
+    "admin_password": "vutune_admin",
+    "public_url": "https://proprietary-wishlist-husband-bacteria.trycloudflare.com/stream"
+  },
+  "dashboard": {
+    "port": 5000,
+    "secret_key": "vutune-secret-key-change-this"
+  },
+  "rooms": [
+    {
+      "id": "352290549-76",
+      "name": "Room 352290549-76"
+    }
+  ],
+  "allowed_users": [],
+  "anyone_can_use": true,
+  "bot_name": "VuTune"
+}
