@@ -100,16 +100,16 @@ class IMVUBrowserClient:
                         except:
                             logger.info("No login modal trigger found, assuming form is visible.")
                         
-                    user_input = page.locator('input[type="text"], input[type="email"], input[name="username"]').first
+                    user_input = page.locator('form[name="login_form"] input[name="avatarname"], form[name="login_form"] input[type="text"], input[name="avatarname"]').first
                     logger.info("Waiting for username input...")
                     await user_input.wait_for(timeout=15000)
                     await user_input.fill(self.credentials.get('username', 'VuTune'), timeout=5000)
                     
                     logger.info("Filling password...")
-                    await page.locator('input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''), timeout=5000)
+                    await page.locator('form[name="login_form"] input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''), timeout=5000)
                     
                     logger.info("Clicking login...")
-                    await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("LOG IN")').first.click(timeout=5000, force=True)
+                    await page.locator('form[name="login_form"] .submit, form[name="login_form"] .label-log-in, form[name="login_form"] button, form[name="login_form"] input[type="submit"]').first.click(timeout=5000, force=True)
                     
                     logger.info("Waiting after login click...")
                     await page.wait_for_timeout(5000)
