@@ -104,11 +104,11 @@ class IMVUBrowserClient:
                 join_btn = page.locator('button.join-cta').first
                 await join_btn.wait_for(state="visible", timeout=30000)
                 
-                logger.info("Initial Join button found! Injecting Javascript click...")
+                logger.info("Initial Join button found! Clicking...")
                 try:
-                    await join_btn.evaluate("node => node.click()")
-                except:
                     await join_btn.click(force=True)
+                except:
+                    await join_btn.evaluate("node => node.click()")
                 logger.info("Successfully clicked the Join button!")
             except Exception as e:
                 logger.warning(f"Join button error (maybe already in room): {e}")
@@ -206,19 +206,40 @@ class IMVUBrowserClient:
                 await page.wait_for_timeout(5000)
                 
                 logger.info("Looking for Join button...")
-                for _ in range(5):
+                for attempt in range(4):
                     join_btn = page.locator('button.join-cta').first
                     if not await join_btn.is_visible():
                         logger.info("Join button is gone. We must be in the room!")
                         break
                         
-                    logger.info("Join button found! Injecting Javascript click...")
+                    logger.info(f"Join button visible! Attempt {attempt+1} to click...")
                     try:
-                        await join_btn.evaluate("node => node.click()")
+                        if attempt == 0:
+                            # Strategy 1: Standard Playwright trusted click (bypasses interceptors with force=True)
+                            await join_btn.click(force=True)
+                        elif attempt == 1:
+                            # Strategy 2: Raw JS node.click()
+                            await join_btn.evaluate("node => node.click()")
+                        elif attempt == 2:
+                            # Strategy 3: Full React-compliant MouseEvent dispatch
+                            await page.evaluate('''() => {
+                                const btn = document.querySelector('button.join-cta');
+                                if (btn) {
+                                    btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                                    btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                                    btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                                }
+                            }''')
+                        else:
+                            # Strategy 4: Raw OS-level mouse click on exact visual coordinates
+                            box = await join_btn.bounding_box()
+                            if box:
+                                await page.mouse.click(box["x"] + box["width"]/2, box["y"] + box["height"]/2)
                     except Exception as e:
-                        logger.warning(f"JS click failed: {e}")
+                        logger.warning(f"Click strategy {attempt+1} failed: {e}")
                         
-                    await page.wait_for_timeout(3000)
+                    logger.info("Waiting 10s for UI to transition...")
+                    await page.wait_for_timeout(10000)
                 
                 await page.wait_for_timeout(5000)
                 await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
