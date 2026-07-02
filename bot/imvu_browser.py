@@ -198,6 +198,34 @@ class IMVUBrowserClient:
 
             # Wait for the page to settle after navigation
             await page.wait_for_timeout(15000)
+            
+            # ---------- 5.5. HANDLE IN-ROOM LOGIN MODAL ----------
+            try:
+                # IMVU sometimes forces a login popup over the room if the session didn't stick
+                in_room_login = page.locator('input[type="password"]').first
+                if await in_room_login.is_visible(timeout=5000):
+                    logger.warning("Room forced a login popup! Attempting to login directly from the room page...")
+                    
+                    user_val = self.credentials.get("username", "")
+                    pass_val = self.credentials.get("password", "")
+                    logger.info(f"Filling credentials (User: {user_val}, Pass length: {len(pass_val)})...")
+                    
+                    # Fill username
+                    user_input = page.locator('input[name="avatarname"], input[type="email"], input[type="text"]').first
+                    await user_input.fill(user_val, force=True)
+                    
+                    # Fill password
+                    await in_room_login.fill(pass_val, force=True)
+                    
+                    # Click submit
+                    logger.info("Clicking login on room page...")
+                    submit_btn = page.locator('label.submit, .submit, button:has-text("LOG IN")').first
+                    await submit_btn.click(force=True)
+                    
+                    logger.info("Submitted login. Waiting 8s for AJAX to complete...")
+                    await page.wait_for_timeout(8000)
+            except Exception as e:
+                logger.info(f"No in-room login modal detected (which is good).")
 
             url = page.url
             title = await page.title()
