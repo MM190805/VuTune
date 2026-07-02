@@ -71,7 +71,7 @@ class RoomManager:
             with open(session_path, 'r') as f:
                 session_data = json.load(f)
 
-        self.imvu = IMVUBrowserClient(session_data)
+        self.imvu = IMVUBrowserClient(session_data, credentials=config.get('imvu', {}))
         self.player = MusicPlayer(config['icecast'])
         self.queue = QueueManager()
         self.cmd_handler = CommandHandler(

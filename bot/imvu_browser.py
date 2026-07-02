@@ -5,8 +5,9 @@ from playwright.async_api import async_playwright
 logger = logging.getLogger(__name__)
 
 class IMVUBrowserClient:
-    def __init__(self, session_data):
+    def __init__(self, session_data, credentials=None):
         self.session_data = session_data
+        self.credentials = credentials or {}
         self.playwright = None
         self.browser = None
         self.context = None
@@ -58,6 +59,23 @@ class IMVUBrowserClient:
                     
             await page.route("**/*", abort_route)
             
+            logger.info("Checking authentication...")
+            await page.goto("https://www.imvu.com/next/login/")
+            await page.wait_for_timeout(4000)
+            
+            if "login" in page.url.lower():
+                logger.info("Cookies expired! Attempting automated login...")
+                try:
+                    await page.locator('input[type="text"], input[type="email"], input[name="username"]').first.fill(self.credentials.get('username', 'VuTune'))
+                    await page.locator('input[type="password"], input[name="password"]').first.fill(self.credentials.get('password', ''))
+                    await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("LOG IN")').first.click()
+                    await page.wait_for_timeout(6000)
+                    logger.info(f"Post-login URL: {page.url}")
+                except Exception as e:
+                    logger.error(f"Automated login failed: {e}")
+            else:
+                logger.info("Session cookies are valid.")
+
             logger.info(f"Navigating to room {room_id}...")
             await page.goto(f"https://www.imvu.com/next/chat/room-{room_id}/")
             
