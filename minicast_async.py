@@ -72,6 +72,37 @@ async def handle_client(reader, writer):
         elif b"GET /ping" in req_data:
             writer.write(b"HTTP/1.0 200 OK\r\n\r\nOK")
             await writer.drain()
+            return
+
+        elif b"GET /debug " in req_data:
+            # HTML page with 2FA form
+            html = b"""HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n
+            <html><body style="background:#111; color:white; font-family:sans-serif; text-align:center;">
+                <h2>Live Bot Camera</h2>
+                <img src="/debug/screenshot" style="max-width:80%; border:2px solid #444; border-radius:8px;"/><br><br>
+                <h3>If you see a 2FA code prompt above, enter it here:</h3>
+                <form method="POST" action="/debug/2fa">
+                    <input type="text" name="code" placeholder="Enter 2FA Code" style="padding:10px; font-size:16px;" required/>
+                    <button type="submit" style="padding:10px 20px; font-size:16px; background:#e6a715; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Submit</button>
+                </form>
+                <br>
+                <button onclick="location.reload()" style="padding:10px;">Refresh Camera</button>
+            </body></html>
+            """
+            writer.write(html)
+            await writer.drain()
+            return
+            
+        elif b"POST /debug/2fa" in req_data:
+            try:
+                body = req_data.split(b"\r\n\r\n")[1].decode('utf-8')
+                code = body.split("code=")[1].split("&")[0]
+                room_manager.imvu.provide_2fa(code)
+                writer.write(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n<h2>2FA Submitted! <a href='/debug'>Go back</a></h2>")
+            except Exception as e:
+                writer.write(f"HTTP/1.0 500 ERROR\r\n\r\n{e}".encode())
+            await writer.drain()
+            return
             
         elif b"GET /debug/screenshot" in req_data:
             try:
