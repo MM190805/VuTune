@@ -112,10 +112,11 @@ async def handle_client(reader, writer):
             
         elif b"GET /stream" in req_data:
             writer.write(
-                b"HTTP/1.0 200 OK\r\n"
+                b"HTTP/1.1 200 OK\r\n"
                 b"Content-Type: audio/mpeg\r\n"
                 b"Cache-Control: no-cache\r\n"
-                b"Connection: close\r\n"
+                b"Connection: keep-alive\r\n"
+                b"Content-Length: 999999999999\r\n"
                 b"Access-Control-Allow-Origin: *\r\n\r\n"
             )
             if burst_buffer:
