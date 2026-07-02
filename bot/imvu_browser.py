@@ -195,9 +195,8 @@ class IMVUBrowserClient:
             # await page.route("**/*", block_heavy_assets)
 
             # ---------- 4. NAVIGATE BACK TO ROOM AND CLICK JOIN ----------
-            # After login/2FA, IMVU reloads the page. We must re-navigate to
-            # the room URL to get a fresh page, then click the Join button.
-            logger.info("Re-navigating to room after auth to get a fresh page...")
+            # After login/2FA, re-navigate so all page state is fresh.
+            logger.info("Re-navigating to room after auth...")
             try:
                 await page.goto(
                     f"https://www.imvu.com/next/chat/room-{room_id}/",
@@ -205,49 +204,56 @@ class IMVUBrowserClient:
                     timeout=60000
                 )
             except Exception as e:
-                logger.warning(f"Room re-navigation timed out: {e}")
+                logger.warning(f"Room re-navigation timed out (OK): {e}")
 
-            logger.info("Waiting 15s for the room UI to fully render...")
-            await page.wait_for_timeout(15000)
-            await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
+            logger.info("Waiting 12s for React to fully hydrate...")
+            await page.wait_for_timeout(12000)
 
-            # Nuclear JS approach: keep clicking any join button until it disappears
-            logger.info("Starting nuclear JS join loop...")
-            for attempt in range(10):
+            # Dismiss the Performance Alert banner so it doesn't block clicks
+            try:
+                close_btn = page.locator('.alert-close, [class*="close"][class*="alert"], [class*="alert"] button').first
+                if await close_btn.is_visible():
+                    await close_btn.click(force=True)
+                    logger.info("Dismissed Performance Alert banner.")
+                    await page.wait_for_timeout(1000)
+            except:
+                pass
+
+            # Use Playwright trusted clicks (isTrusted=true) not JS events
+            logger.info("Starting Playwright trusted-click join loop...")
+            for attempt in range(6):
                 try:
                     await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
                 except:
                     pass
 
-                clicked = await page.evaluate('''
-                    () => {
-                        // Try button.join-cta first
-                        let btn = document.querySelector('button.join-cta');
-                        // Fallback: any button whose text includes JOIN
-                        if (!btn) {
-                            for (let b of document.querySelectorAll('button')) {
-                                if (b.innerText && b.innerText.toUpperCase().includes('JOIN')) {
-                                    btn = b; break;
-                                }
-                            }
-                        }
-                        if (btn) {
-                            btn.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true}));
-                            btn.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true, cancelable:true}));
-                            btn.dispatchEvent(new MouseEvent('click',     {bubbles:true, cancelable:true}));
-                            btn.click();
-                            return btn.className + " | " + btn.innerText.trim();
-                        }
-                        return null;
-                    }
-                ''')
+                join_btn = page.locator('button.join-cta').first
+                try:
+                    is_vis = await join_btn.is_visible()
+                except:
+                    is_vis = False
 
-                if clicked:
-                    logger.info(f"Attempt {attempt+1}: Clicked [{clicked}]. Waiting 5s...")
-                    await page.wait_for_timeout(5000)
-                else:
-                    logger.info(f"Attempt {attempt+1}: No join button found — we are in the room!")
+                if not is_vis:
+                    logger.info(f"Attempt {attempt+1}: join-cta not visible — must be in the room!")
                     break
+
+                logger.info(f"Attempt {attempt+1}: join-cta visible, clicking with Playwright trusted click...")
+                try:
+                    # Scroll the button into view first
+                    await join_btn.scroll_into_view_if_needed()
+                    await page.wait_for_timeout(500)
+                    # Use Playwright's built-in click — generates real CDP pointer events (isTrusted=true)
+                    await join_btn.click(timeout=5000)
+                    logger.info(f"Attempt {attempt+1}: Click sent! Waiting 8s for room to load...")
+                except Exception as e:
+                    logger.warning(f"Attempt {attempt+1}: Normal click failed ({e}), trying force click...")
+                    try:
+                        await join_btn.click(force=True, timeout=5000)
+                        logger.info(f"Attempt {attempt+1}: Force click sent!")
+                    except Exception as e2:
+                        logger.warning(f"Attempt {attempt+1}: Force click also failed: {e2}")
+
+                await page.wait_for_timeout(8000)
 
             await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
 
