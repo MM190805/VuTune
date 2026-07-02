@@ -2,7 +2,9 @@ import asyncio
 import logging
 import os
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import Stealth
+
+_stealth = Stealth()
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ class IMVUBrowserClient:
                 user_agent=user_agent
             )
 
-        await stealth_async(self.context)
+        await _stealth.apply_stealth_async(self.context)
         self.username = self.credentials.get("username", "VuTune")
 
     async def join_room(self, room_id, on_message_callback):
@@ -66,7 +68,7 @@ class IMVUBrowserClient:
 
         try:
             page = await self.context.new_page()
-            await stealth_async(page)
+            await _stealth.apply_stealth_async(page)
             self.pages[room_id] = page
 
             # ---------- 1. NAVIGATE TO LOGIN PAGE ----------
