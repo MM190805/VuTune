@@ -28,19 +28,19 @@ class IMVUBrowserClient:
                 '--js-flags=--max-old-space-size=256'
             ]
         )
-        self.context = await self.browser.new_context(viewport={'width': 1280, 'height': 720})
-        
-        cookies = []
-        for k, v in self.session_data.get('cookies', {}).items():
-            cookies.append({
-                'name': k,
-                'value': v,
-                'domain': '.imvu.com',
-                'path': '/'
-            })
-        if cookies:
-            await self.context.add_cookies(cookies)
-        self.username = self.session_data.get('username', 'VuTune')
+        import os
+        state_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'state.json')
+        if os.path.exists(state_path):
+            self.context = await self.browser.new_context(
+                viewport={'width': 1280, 'height': 720},
+                storage_state=state_path
+            )
+        else:
+            self.context = await self.browser.new_context(
+                viewport={'width': 1280, 'height': 720}
+            )
+            
+        self.username = self.credentials.get('username', 'VuTune')
         self.is_logged_in = True
 
     async def join_room(self, room_id, on_message_callback):
