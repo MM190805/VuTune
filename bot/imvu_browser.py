@@ -108,42 +108,27 @@ class IMVUBrowserClient:
                         except Exception:
                             logger.info("No modal trigger found, assuming form is already visible.")
 
-                    # Fill username
+                    # Fill username using exact DOM structure
                     logger.info("Waiting for username input...")
-                    user_input = page.locator(
-                        'input[type="text"]:visible, '
-                        'input[type="email"]:visible, '
-                        'input[name="avatarname"]:visible'
-                    ).first
-                    await user_input.wait_for(timeout=15000)
-                    await user_input.fill(self.credentials.get("username", ""), timeout=5000)
+                    user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
+                    await user_input.wait_for(state="attached", timeout=15000)
+                    await user_input.fill(self.credentials.get("username", ""), force=True)
 
                     # Fill password
                     logger.info("Filling password...")
-                    await page.locator(
-                        'input[type="password"]:visible, '
-                        'input[name="password"]:visible'
-                    ).first.fill(self.credentials.get("password", ""), timeout=5000)
+                    pass_input = page.locator('form[name="login_form"] input[type="password"], form[name="login_form"] input[name="password"]').first
+                    await pass_input.fill(self.credentials.get("password", ""), force=True)
 
-                    # Click submit
+                    # Click submit (which is actually a <label> tag, not a <button>)
                     logger.info("Clicking login...")
                     try:
-                        await page.locator(
-                            'button:has-text("Log In"):visible, '
-                            'button:has-text("LOG IN"):visible, '
-                            '.submit:visible, '
-                            'button[type="submit"]:visible'
-                        ).first.click(timeout=5000, force=True)
+                        submit_btn = page.locator('form[name="login_form"] label.submit').first
+                        await submit_btn.click(timeout=5000, force=True)
                     except Exception as e:
                         logger.warning(f"Submit click failed, trying JS fallback: {e}")
                         await page.evaluate("""
-                            const btns = Array.from(document.querySelectorAll('button'));
-                            const loginBtn = btns.find(b => b.innerText && b.innerText.toUpperCase().includes('LOG IN'));
-                            if (loginBtn) loginBtn.click();
-                            else {
-                                const fallback = document.querySelector('.submit, button[type="submit"]');
-                                if (fallback) fallback.click();
-                            }
+                            const btn = document.querySelector('form[name="login_form"] label.submit');
+                            if (btn) btn.click();
                         """)
 
                     # IMVU login is AJAX-based. After submitting, just wait then
