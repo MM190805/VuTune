@@ -136,21 +136,15 @@ class IMVUBrowserClient:
                 await page.keyboard.press("Backspace")
                 await page.keyboard.type(pass_val, delay=100)
                 
-                # Submit
-                submit_btn = page.locator('form[name="login_form"] button.btn-primary, form[name="login_form"] label.submit').first
-                await submit_btn.click(force=True)
+                # Submit via Enter key (most reliable human way)
+                await page.keyboard.press("Enter")
                 
-                logger.info("Submitted login modal! Waiting 15s...")
-                await page.wait_for_timeout(15000)
-                
-                # Click Join again just in case it didn't auto-join
-                join_btn = page.locator('button:has-text("JOIN"), button:has-text("Join"), .action-join').first
-                if await join_btn.is_visible(timeout=5000):
-                    await join_btn.click(force=True)
-                    logger.info("Clicked Join button AGAIN after login!")
+                logger.info("Pressed Enter to submit login modal! Waiting 10s for AJAX authentication to complete...")
+                await page.wait_for_timeout(10000)
                     
             except Exception as e:
-                logger.info("No modal popped up after clicking Join. We should be entering the room now.")
+                logger.warning(f"Exception during login modal handling (or timeout): {e}")
+                logger.info("If no modal popped up, we should be entering the room now.")
 
             # ---------- 3. BLOCK HEAVY 3D ASSETS ONLY AFTER LOGIN ----------
             # We apply the blocker NOW so that the login form's
