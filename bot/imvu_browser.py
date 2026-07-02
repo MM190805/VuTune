@@ -113,12 +113,21 @@ class IMVUBrowserClient:
                 
                 user_input = page.locator('form[name="login_form"] input[name="avatarname"]').first
                 await user_input.wait_for(state="attached", timeout=10000)
-                await user_input.fill(user_val, force=True)
+                await user_input.click(force=True)
+                await user_input.fill("")  # Clear existing
+                await user_input.press_sequentially(user_val, delay=20)
                 
                 pass_input = page.locator('form[name="login_form"] input[type="password"]').first
-                await pass_input.fill(pass_val, force=True)
+                await pass_input.click(force=True)
+                await pass_input.fill("")  # Clear existing
+                await pass_input.press_sequentially(pass_val, delay=20)
                 
-                submit_btn = page.locator('form[name="login_form"] label.submit').first
+                submit_btn = page.locator(
+                    'form[name="login_form"] button.btn-primary, '
+                    'form[name="login_form"] button:has-text("Log In"), '
+                    'form[name="login_form"] button:has-text("LOG IN"), '
+                    'form[name="login_form"] label.submit'
+                ).first
                 await submit_btn.click(force=True)
                 
                 logger.info("Submitted login modal! Waiting 10s for AJAX authentication to complete...")
