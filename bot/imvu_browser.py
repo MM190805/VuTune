@@ -101,7 +101,7 @@ class IMVUBrowserClient:
             # ---------- 2. WAIT FOR AND CLICK JOIN BUTTON ----------
             try:
                 logger.info("Waiting for Join button to appear on the room page...")
-                join_btn = page.locator('button.join-cta, .action-join, button:has-text("JOIN"), button:has-text("Join")').first
+                join_btn = page.locator('button.join-cta').first
                 await join_btn.wait_for(state="visible", timeout=30000)
                 
                 logger.info("Initial Join button found! Injecting Javascript click...")
@@ -207,7 +207,7 @@ class IMVUBrowserClient:
                 
                 logger.info("Looking for Join button...")
                 for _ in range(5):
-                    join_btn = page.locator('button.join-cta, button:has-text("Join"), button:has-text("JOIN")').first
+                    join_btn = page.locator('button.join-cta').first
                     if not await join_btn.is_visible():
                         logger.info("Join button is gone. We must be in the room!")
                         break
