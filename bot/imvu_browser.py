@@ -327,17 +327,26 @@ class IMVUBrowserClient:
             }
 
             foundEls.forEach(el => {
-                let text = el.innerText ? el.innerText.trim() : '';
+                // Find the actual text element inside the message block
+                let textEl = el.querySelector('.cs2-text, [class*="text-12"], [class*="text-14"], p, span');
+                let text = '';
+                if (textEl) {
+                    text = textEl.innerText ? textEl.innerText.trim() : '';
+                } else {
+                    // Fallback to the last line of the full innerText if no specific text element found
+                    let fullText = el.innerText ? el.innerText.trim() : '';
+                    let lines = fullText.split('\\n').filter(l => l.trim());
+                    text = lines[lines.length - 1] ? lines[lines.length - 1].trim() : '';
+                }
+                
                 if (!text) return;
+                
                 // Skip system messages and bot messages
                 let lower = text.toLowerCase();
                 if (lower.includes('joined the chat') || lower.includes('left the chat')) return;
                 let isBot = botPrefixes.some(e => text.startsWith(e)) || text.startsWith('VuTune');
                 if (!isBot) {
-                    // Only grab last line which is the actual message text
-                    let lines = text.split('\\n').filter(l => l.trim());
-                    let lastLine = lines[lines.length - 1] ? lines[lines.length - 1].trim() : '';
-                    if (lastLine) msgs.push(lastLine);
+                    msgs.push(text);
                 }
             });
             return msgs;
@@ -372,6 +381,7 @@ class IMVUBrowserClient:
 
                     for msg in new_msgs:
                         if msg:
+                            logger.info(f"RECEIVED RAW CHAT: {msg}")
                             await on_message_callback("User", msg)
 
             except Exception as e:
