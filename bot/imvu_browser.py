@@ -347,11 +347,7 @@ class IMVUBrowserClient:
         last_msgs = None
 
         while self.is_running and page:
-            # Take live screenshot every 3 seconds for the /debug camera
-            try:
-                await page.screenshot(path="debug.jpg", type="jpeg", quality=60)
-            except Exception:
-                pass
+            # Removed screenshot loop to prevent memory leaks and OOM crashes
 
             # Read chat messages
             try:
