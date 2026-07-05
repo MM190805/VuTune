@@ -32,16 +32,50 @@ class IMVUBrowserClient:
         self.browser = await self.playwright.chromium.launch(
             headless=True,
             args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-gpu",
-                "--disable-dev-shm-usage",
+                # Essential
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--js-flags=--max-old-space-size=256",
+                "--disable-dev-shm-usage",
+                "--single-process",
                 "--renderer-process-limit=1",
-                "--single-process"
+                # Stealth
+                "--disable-blink-features=AutomationControlled",
+                # GPU / Graphics (all off — saves 50-100MB)
+                "--disable-gpu",
+                "--disable-gpu-sandbox",
+                "--disable-software-rasterizer",
+                "--disable-accelerated-2d-canvas",
+                "--disable-webgl",
+                "--disable-3d-apis",
+                # JavaScript heap cap (IMVU gets 96MB max — was 256MB)
+                "--js-flags=--max-old-space-size=96 --optimize-for-size --gc-global",
+                # Disable background processes that leak RAM
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                # Disable heavy features
+                "--disable-extensions",
+                "--disable-plugins",
+                "--disable-translate",
+                "--disable-sync",
+                "--disable-default-apps",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-client-side-phishing-detection",
+                "--disable-hang-monitor",
+                "--disable-popup-blocking",
+                "--disable-prompt-on-repost",
+                "--disable-breakpad",
+                "--no-first-run",
+                "--mute-audio",
+                "--metrics-recording-only",
+                "--safebrowsing-disable-auto-update",
+                "--password-store=basic",
+                "--use-mock-keychain",
             ]
         )
+
 
         user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -52,33 +86,43 @@ class IMVUBrowserClient:
 
         if os.path.exists(state_path):
             self.context = await self.browser.new_context(
-                viewport={"width": 1280, "height": 720},
+                viewport={"width": 800, "height": 600},
                 user_agent=user_agent,
                 storage_state=state_path
             )
         else:
             self.context = await self.browser.new_context(
-                viewport={"width": 1280, "height": 720},
+                viewport={"width": 800, "height": 600},
                 user_agent=user_agent
             )
 
         await _stealth.apply_stealth_async(self.context)
         
-        # Block heavy 3D assets and mock images to save RAM (Fixes 512MB OOM crash)
+        # Aggressively block all non-essential resources to stay under 512MB RAM
         async def intercept_route(route):
             req = route.request
-            # 1x1 transparent PNG bytes
+            rtype = req.resource_type
+            url = req.url.lower()
+
+            # 1x1 transparent PNG — satisfies React image elements without loading real images
             empty_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
-            
-            if req.resource_type == "image":
+
+            if rtype == "image":
                 await route.fulfill(status=200, content_type="image/png", body=empty_png)
-            elif req.resource_type in ["media", "font"]:
+            elif rtype in ["media", "font", "stylesheet"]:
                 await route.abort()
-            elif req.url.lower().endswith(('.cfl', '.xsf', '.chkn', '.xmf', '.xrf', '.xaf', '.mp3', '.ogg', '.mp4')):
+            elif rtype == "script" and any(x in url for x in [
+                "google-analytics", "googletagmanager", "segment.io",
+                "hotjar", "mixpanel", "optimizely", "clarity.ms",
+                "facebook.net", "doubleclick", "amazon-adsystem"
+            ]):
+                await route.abort()
+            elif url.endswith(('.cfl', '.xsf', '.chkn', '.xmf', '.xrf', '.xaf', '.mp3', '.ogg', '.mp4', '.woff', '.woff2', '.ttf', '.eot')):
                 await route.abort()
             else:
                 await route.continue_()
         await self.context.route("**/*", intercept_route)
+
 
         self.username = self.credentials.get("username", "VuTune")
 
