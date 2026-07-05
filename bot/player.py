@@ -75,8 +75,8 @@ class MusicPlayer:
 
     def search_youtube(self, query: str) -> dict | None:
         """
-        Search via Invidious (free YouTube frontend API) to bypass cloud IP blocks.
-        Falls back to direct yt-dlp search if Invidious is down.
+        Search via Invidious API and get stream URL from Invidious too.
+        Completely bypasses YouTube's cloud IP blocks — no yt-dlp needed for search.
         """
         import requests as req_lib
 
@@ -87,94 +87,84 @@ class MusicPlayer:
             "https://yt.artemislena.eu",
             "https://invidious.nerdvpn.de",
             "https://invidious.io.lol",
+            "https://invidious.fdn.fr",
         ]
-
-        video_id = None
-        title = query
-        uploader = ""
-        duration = 0
 
         for instance in INVIDIOUS_INSTANCES:
             try:
+                # Step 1: Search for the video
                 resp = req_lib.get(
                     f"{instance}/api/v1/search",
                     params={"q": query, "type": "video", "sort_by": "relevance"},
                     timeout=8,
                     headers={"User-Agent": "VuTune/1.0"}
                 )
-                if resp.status_code == 200:
-                    results = resp.json()
-                    if results and len(results) > 0:
-                        v = results[0]
-                        video_id = v.get("videoId")
-                        title = v.get("title", query)
-                        uploader = v.get("author", "")
-                        duration = v.get("lengthSeconds", 0)
-                        logger.info(f"Found via Invidious ({instance}): {title}")
-                        break
+                if resp.status_code != 200:
+                    continue
+                results = resp.json()
+                if not results:
+                    continue
+
+                video = results[0]
+                video_id = video.get("videoId")
+                if not video_id:
+                    continue
+
+                title = video.get("title", query)
+                uploader = video.get("author", "")
+                duration = video.get("lengthSeconds", 0)
+                logger.info(f"Found via Invidious ({instance}): {title} [{video_id}]")
+
+                # Step 2: Get stream URL from the same Invidious instance
+                vid_resp = req_lib.get(
+                    f"{instance}/api/v1/videos/{video_id}",
+                    params={"fields": "adaptiveFormats,formatStreams"},
+                    timeout=10,
+                    headers={"User-Agent": "VuTune/1.0"}
+                )
+                if vid_resp.status_code != 200:
+                    continue
+
+                vid_info = vid_resp.json()
+
+                # Try adaptive formats first (best audio quality)
+                stream_url = None
+                best_bitrate = 0
+                for fmt in vid_info.get("adaptiveFormats", []):
+                    if "audio" in fmt.get("type", "") and fmt.get("url"):
+                        bitrate = fmt.get("bitrate", 0)
+                        if bitrate > best_bitrate:
+                            best_bitrate = bitrate
+                            stream_url = fmt["url"]
+
+                # Fallback to regular format streams
+                if not stream_url:
+                    for fmt in vid_info.get("formatStreams", []):
+                        if fmt.get("url"):
+                            stream_url = fmt["url"]
+                            break
+
+                if not stream_url:
+                    logger.warning(f"No stream URL from {instance}, trying next...")
+                    continue
+
+                logger.info(f"Got stream URL from Invidious. Title: {title}")
+                return {
+                    'title': title,
+                    'webpage_url': f"https://www.youtube.com/watch?v={video_id}",
+                    'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                    'duration': duration,
+                    'uploader': uploader,
+                    'query': query,
+                    'url': stream_url,
+                }
+
             except Exception as e:
                 logger.warning(f"Invidious {instance} failed: {e}")
                 continue
 
-        if not video_id:
-            logger.error("All Invidious instances failed, trying direct yt-dlp...")
-            # Direct yt-dlp fallback
-            try:
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'noplaylist': True,
-                    'quiet': True,
-                    'no_warnings': True,
-                    'socket_timeout': 15,
-                    'http_headers': {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    },
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(f"ytsearch1:{query}", download=False)
-                    if info and 'entries' in info and info['entries']:
-                        entry = info['entries'][0]
-                        return {
-                            'title': entry.get('title', query),
-                            'webpage_url': entry.get('webpage_url', ''),
-                            'thumbnail': entry.get('thumbnail', ''),
-                            'duration': entry.get('duration', 0),
-                            'uploader': entry.get('uploader', ''),
-                            'query': query,
-                            'url': entry.get('url', ''),
-                        }
-            except Exception as e:
-                logger.error(f"yt-dlp fallback also failed: {e}")
-            return None
-
-        # Use yt-dlp to get the actual stream URL from the video ID
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'noplaylist': True,
-            'quiet': True,
-            'no_warnings': True,
-            'socket_timeout': 15,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            },
-        }
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                if not info:
-                    return None
-                return {
-                    'title': title,
-                    'webpage_url': f"https://www.youtube.com/watch?v={video_id}",
-                    'thumbnail': info.get('thumbnail', ''),
-                    'duration': duration,
-                    'uploader': uploader,
-                    'query': query,
-                    'url': info.get('url', ''),
-                }
-        except Exception as e:
-            logger.error(f"yt-dlp stream URL fetch failed: {e}")
-            return None
+        logger.error("All Invidious instances failed.")
+        return None
 
 
     def play(self, song: dict):
