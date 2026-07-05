@@ -153,6 +153,9 @@ class MusicPlayer:
             # THE ULTIMATE FIX: use YouTube's iOS/Android player client.
             # These mobile clients return pre-signed URLs — no JS deciphering,
             # no bot detection, works from any cloud IP.
+            # Also pass real browser cookies collected at startup.
+            import os
+            cookies_file = "/tmp/yt_cookies.txt" if os.path.exists("/tmp/yt_cookies.txt") else None
             for player_client in [['ios'], ['android'], ['web']]:
                 try:
                     ydl_opts = {
@@ -170,6 +173,8 @@ class MusicPlayer:
                             'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)',
                         },
                     }
+                    if cookies_file:
+                        ydl_opts['cookiefile'] = cookies_file
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(yt_url, download=False)
                         if info and info.get('url'):
