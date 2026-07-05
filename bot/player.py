@@ -150,34 +150,43 @@ class MusicPlayer:
         if video_id:
             yt_url = f"https://www.youtube.com/watch?v={video_id}"
 
-            # 2a: Try yt-dlp with direct video URL (YouTube IS reachable from Render)
-            try:
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'noplaylist': True,
-                    'quiet': True,
-                    'no_warnings': True,
-                    'socket_timeout': 20,
-                    'http_headers': {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                    },
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(yt_url, download=False)
-                    if info and info.get('url'):
-                        logger.info(f"Got stream via yt-dlp direct URL: {title}")
-                        return {
-                            "title":       title,
-                            "webpage_url": yt_url,
-                            "thumbnail":   f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
-                            "duration":    duration,
-                            "uploader":    uploader,
-                            "query":       query,
-                            "url":         info['url'],
-                        }
-            except Exception as e:
-                logger.warning(f"yt-dlp direct URL failed: {e}")
+            # THE ULTIMATE FIX: use YouTube's iOS/Android player client.
+            # These mobile clients return pre-signed URLs — no JS deciphering,
+            # no bot detection, works from any cloud IP.
+            for player_client in [['ios'], ['android'], ['web']]:
+                try:
+                    ydl_opts = {
+                        'format': 'bestaudio/best',
+                        'noplaylist': True,
+                        'quiet': True,
+                        'no_warnings': True,
+                        'socket_timeout': 20,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': player_client,
+                            }
+                        },
+                        'http_headers': {
+                            'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)',
+                        },
+                    }
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(yt_url, download=False)
+                        if info and info.get('url'):
+                            logger.info(f"Got stream via yt-dlp ({player_client}): {title}")
+                            return {
+                                "title":       title,
+                                "webpage_url": yt_url,
+                                "thumbnail":   f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                                "duration":    duration,
+                                "uploader":    uploader,
+                                "query":       query,
+                                "url":         info['url'],
+                            }
+                except Exception as e:
+                    logger.warning(f"yt-dlp ({player_client}) failed: {e}")
+                    continue
+
 
             # 2b: Try Piped API instances as fallback
             PIPED_INSTANCES = [
