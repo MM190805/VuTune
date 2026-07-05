@@ -146,13 +146,45 @@ class MusicPlayer:
         except Exception as e:
             logger.warning(f"YouTube internal API failed: {e}")
 
-        # ── Step 2: Get stream URL from Piped API ────────────────────────────
+        # ── Step 2: Get stream URL ────────────────────────────────────────────
         if video_id:
+            yt_url = f"https://www.youtube.com/watch?v={video_id}"
+
+            # 2a: Try yt-dlp with direct video URL (YouTube IS reachable from Render)
+            try:
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'noplaylist': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'socket_timeout': 20,
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    },
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(yt_url, download=False)
+                    if info and info.get('url'):
+                        logger.info(f"Got stream via yt-dlp direct URL: {title}")
+                        return {
+                            "title":       title,
+                            "webpage_url": yt_url,
+                            "thumbnail":   f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                            "duration":    duration,
+                            "uploader":    uploader,
+                            "query":       query,
+                            "url":         info['url'],
+                        }
+            except Exception as e:
+                logger.warning(f"yt-dlp direct URL failed: {e}")
+
+            # 2b: Try Piped API instances as fallback
             PIPED_INSTANCES = [
                 "https://pipedapi.kavin.rocks",
-                "https://piped-api.garudalinux.org",
-                "https://api.piped.yt",
-                "https://pipedapi.tokhmi.xyz",
+                "https://pipedapi.in.projectsegfau.lt",
+                "https://piped-api.codespace.cz",
+                "https://watchapi.whatever.social",
                 "https://pipedapi.moomoo.me",
             ]
             for piped in PIPED_INSTANCES:
@@ -163,9 +195,9 @@ class MusicPlayer:
                         headers={"User-Agent": "VuTune/1.0"}
                     )
                     if pr.status_code != 200:
+                        logger.warning(f"Piped {piped} returned {pr.status_code}")
                         continue
                     pdata = pr.json()
-                    # Pick best audio-only stream
                     stream_url = None
                     best_br = 0
                     for s in pdata.get("audioStreams", []):
@@ -173,7 +205,6 @@ class MusicPlayer:
                             best_br = s["bitrate"]
                             stream_url = s["url"]
                     if not stream_url:
-                        # fallback to video stream
                         for s in pdata.get("videoStreams", []):
                             if s.get("url"):
                                 stream_url = s["url"]
@@ -182,7 +213,7 @@ class MusicPlayer:
                         logger.info(f"Got stream from Piped ({piped}): {title}")
                         return {
                             "title":       title,
-                            "webpage_url": f"https://www.youtube.com/watch?v={video_id}",
+                            "webpage_url": yt_url,
                             "thumbnail":   f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
                             "duration":    duration,
                             "uploader":    uploader,
