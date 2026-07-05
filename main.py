@@ -76,12 +76,15 @@ def main():
     print("   Press Ctrl+C to stop.\n")
 
     # Flask runs in main thread (blocking)
+    # threaded=True is REQUIRED for /stream to work alongside the dashboard
     app.run(
         host='0.0.0.0',
         port=config['dashboard']['port'],
         debug=False,
         use_reloader=False,
+        threaded=True,
     )
+
 
 
 if __name__ == '__main__':
