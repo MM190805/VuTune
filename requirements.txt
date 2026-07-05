@@ -1,7 +1,6 @@
 flask
 flask-cors
 requests
-yt-dlp
+yt-dlp>=2025.1.1
 playwright
-pytube
 playwright-stealth

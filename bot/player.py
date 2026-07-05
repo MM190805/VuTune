@@ -84,6 +84,20 @@ class MusicPlayer:
             'quiet': True,
             'no_warnings': True,
             'default_search': 'ytsearch',
+            # Bypass YouTube's bot detection on cloud IPs
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            # Skip age-gate and other bot checks
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['hls', 'dash'],
+                    'player_skip': ['js', 'configs', 'webpage'],
+                }
+            },
+            'socket_timeout': 15,
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -91,6 +105,8 @@ class MusicPlayer:
                 if not info or 'entries' not in info or not info['entries']:
                     return None
                 entry = info['entries'][0]
+                if not entry:
+                    return None
                 return {
                     'title':       entry.get('title', query),
                     'webpage_url': entry.get('webpage_url', ''),
@@ -103,6 +119,7 @@ class MusicPlayer:
         except Exception as e:
             logger.error(f"YouTube search error: {e}")
             return None
+
 
     def play(self, song: dict):
         """Stream a song to internal broadcast. Stops any current song first."""
