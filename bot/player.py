@@ -30,19 +30,44 @@ class MusicPlayer:
     # ------------------------------------------------------------------
 
     def _monitor(self):
-        """Wait for ffmpeg to finish and fire the song-end callback."""
+        """Read ffmpeg stdout and push audio chunks to the radio server."""
+        radio_url = os.environ.get("RADIO_SERVER_URL", "").rstrip("/")
+        radio_secret = os.environ.get("RADIO_PUSH_SECRET", "vutune-radio-secret")
+        push_url = f"{radio_url}/push" if radio_url else None
+
         if self._ffmpeg_proc:
-            # Continuously read from ffmpeg stdout and broadcast
             while True:
                 chunk = self._ffmpeg_proc.stdout.read(4096)
                 if not chunk:
                     break
-                app.broadcast_audio(chunk)
+                if push_url:
+                    try:
+                        import urllib.request
+                        req = urllib.request.Request(
+                            push_url,
+                            data=chunk,
+                            method='POST',
+                            headers={
+                                'Content-Type': 'audio/mpeg',
+                                'X-Radio-Secret': radio_secret,
+                            }
+                        )
+                        urllib.request.urlopen(req, timeout=2)
+                    except Exception:
+                        pass  # Don't crash the player if radio server is down
+                else:
+                    # Fallback: broadcast locally if no radio server configured
+                    try:
+                        from dashboard.app import broadcast_audio
+                        broadcast_audio(chunk)
+                    except Exception:
+                        pass
             self._ffmpeg_proc.wait()
         self.is_playing = False
         logger.info("Song finished.")
         if self.on_song_end:
             self.on_song_end()
+
 
     # ------------------------------------------------------------------
     # Public API
