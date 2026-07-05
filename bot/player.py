@@ -75,49 +75,105 @@ class MusicPlayer:
 
     def search_youtube(self, query: str) -> dict | None:
         """
-        Search YouTube for a song by name (all languages supported).
-        Returns song info dict or None on failure.
+        Search via Invidious (free YouTube frontend API) to bypass cloud IP blocks.
+        Falls back to direct yt-dlp search if Invidious is down.
         """
+        import requests as req_lib
+
+        # Public Invidious instances — tried in order until one works
+        INVIDIOUS_INSTANCES = [
+            "https://inv.nadeko.net",
+            "https://invidious.privacydev.net",
+            "https://yt.artemislena.eu",
+            "https://invidious.nerdvpn.de",
+            "https://invidious.io.lol",
+        ]
+
+        video_id = None
+        title = query
+        uploader = ""
+        duration = 0
+
+        for instance in INVIDIOUS_INSTANCES:
+            try:
+                resp = req_lib.get(
+                    f"{instance}/api/v1/search",
+                    params={"q": query, "type": "video", "sort_by": "relevance"},
+                    timeout=8,
+                    headers={"User-Agent": "VuTune/1.0"}
+                )
+                if resp.status_code == 200:
+                    results = resp.json()
+                    if results and len(results) > 0:
+                        v = results[0]
+                        video_id = v.get("videoId")
+                        title = v.get("title", query)
+                        uploader = v.get("author", "")
+                        duration = v.get("lengthSeconds", 0)
+                        logger.info(f"Found via Invidious ({instance}): {title}")
+                        break
+            except Exception as e:
+                logger.warning(f"Invidious {instance} failed: {e}")
+                continue
+
+        if not video_id:
+            logger.error("All Invidious instances failed, trying direct yt-dlp...")
+            # Direct yt-dlp fallback
+            try:
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'noplaylist': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'socket_timeout': 15,
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    },
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+                    if info and 'entries' in info and info['entries']:
+                        entry = info['entries'][0]
+                        return {
+                            'title': entry.get('title', query),
+                            'webpage_url': entry.get('webpage_url', ''),
+                            'thumbnail': entry.get('thumbnail', ''),
+                            'duration': entry.get('duration', 0),
+                            'uploader': entry.get('uploader', ''),
+                            'query': query,
+                            'url': entry.get('url', ''),
+                        }
+            except Exception as e:
+                logger.error(f"yt-dlp fallback also failed: {e}")
+            return None
+
+        # Use yt-dlp to get the actual stream URL from the video ID
         ydl_opts = {
             'format': 'bestaudio/best',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
-            'default_search': 'ytsearch',
-            # Bypass YouTube's bot detection on cloud IPs
+            'socket_timeout': 15,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             },
-            # Skip age-gate and other bot checks
-            'extractor_args': {
-                'youtube': {
-                    'skip': ['hls', 'dash'],
-                    'player_skip': ['js', 'configs', 'webpage'],
-                }
-            },
-            'socket_timeout': 15,
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"ytsearch1:{query}", download=False)
-                if not info or 'entries' not in info or not info['entries']:
-                    return None
-                entry = info['entries'][0]
-                if not entry:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                if not info:
                     return None
                 return {
-                    'title':       entry.get('title', query),
-                    'webpage_url': entry.get('webpage_url', ''),
-                    'thumbnail':   entry.get('thumbnail', ''),
-                    'duration':    entry.get('duration', 0),
-                    'uploader':    entry.get('uploader', ''),
-                    'query':       query,
-                    'url':         entry.get('url', ''),
+                    'title': title,
+                    'webpage_url': f"https://www.youtube.com/watch?v={video_id}",
+                    'thumbnail': info.get('thumbnail', ''),
+                    'duration': duration,
+                    'uploader': uploader,
+                    'query': query,
+                    'url': info.get('url', ''),
                 }
         except Exception as e:
-            logger.error(f"YouTube search error: {e}")
+            logger.error(f"yt-dlp stream URL fetch failed: {e}")
             return None
 
 
