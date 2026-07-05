@@ -98,7 +98,7 @@ class IMVUBrowserClient:
 
         await _stealth.apply_stealth_async(self.context)
         
-        # Aggressively block all non-essential resources to stay under 512MB RAM
+        # Block non-essential resources to reduce RAM while keeping the page functional
         async def intercept_route(route):
             req = route.request
             rtype = req.resource_type
@@ -108,20 +108,25 @@ class IMVUBrowserClient:
             empty_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
 
             if rtype == "image":
+                # Replace all images with 1x1 pixel — React accepts it, saves ~200MB RAM
                 await route.fulfill(status=200, content_type="image/png", body=empty_png)
-            elif rtype in ["media", "font", "stylesheet"]:
+            elif rtype in ["media", "font"]:
+                # Block audio/video/fonts — not needed for chat
                 await route.abort()
             elif rtype == "script" and any(x in url for x in [
                 "google-analytics", "googletagmanager", "segment.io",
                 "hotjar", "mixpanel", "optimizely", "clarity.ms",
                 "facebook.net", "doubleclick", "amazon-adsystem"
             ]):
+                # Block tracking/analytics scripts
                 await route.abort()
             elif url.endswith(('.cfl', '.xsf', '.chkn', '.xmf', '.xrf', '.xaf', '.mp3', '.ogg', '.mp4', '.woff', '.woff2', '.ttf', '.eot')):
+                # Block 3D assets and media files
                 await route.abort()
             else:
                 await route.continue_()
         await self.context.route("**/*", intercept_route)
+
 
 
         self.username = self.credentials.get("username", "VuTune")
