@@ -70,11 +70,14 @@ def radio_stream():
 
     def generate():
         try:
+            # Send silence IMMEDIATELY so Render's proxy flushes headers right away
+            yield SILENCE
             while True:
                 try:
-                    chunk = client_q.get(timeout=15)
+                    chunk = client_q.get(timeout=5)
                     yield chunk
                 except queue.Empty:
+                    # Keep connection alive with silence when no music is playing
                     yield SILENCE
         finally:
             with _clients_lock:
@@ -91,10 +94,13 @@ def radio_stream():
             'icy-pub': '1',
             'Cache-Control': 'no-cache, no-store',
             'Connection': 'keep-alive',
+            'Transfer-Encoding': 'chunked',
             'Access-Control-Allow-Origin': '*',
+            'X-Accel-Buffering': 'no',   # Disables Nginx/Render proxy buffering
             'X-Content-Type-Options': 'nosniff',
         }
     )
+
 
 
 @app.route('/push', methods=['POST'])
