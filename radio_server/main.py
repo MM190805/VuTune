@@ -23,12 +23,18 @@ _clients_lock = threading.Lock()
 # Shared secret so only our bot can push audio
 PUSH_SECRET = os.environ.get("RADIO_PUSH_SECRET", "vutune-radio-secret")
 
-# Silence MP3 frame — sent when no music is playing so IMVU doesn't drop the connection
-SILENCE = bytes([
-    0xFF, 0xFB, 0x90, 0x00,  # MP3 frame header
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-]) * 200  # ~100ms of silence
+# Load real silent MP3 — proper frames that any MP3 player can decode
+# This prevents IMVU from getting stuck in "loading" state
+try:
+    with open(os.path.join(os.path.dirname(__file__), 'silence.mp3'), 'rb') as f:
+        SILENCE = f.read()
+    logger.info(f"Loaded silence.mp3 ({len(SILENCE)} bytes)")
+except Exception:
+    # Fallback minimal valid MP3 frame if file not found
+    SILENCE = b'\xff\xfb\x90\x00' + b'\x00' * 413  # 417-byte silent MP3 frame
+    SILENCE = SILENCE * 10
+    logger.warning("silence.mp3 not found, using fallback silence bytes")
+
 
 
 def broadcast(data: bytes):
