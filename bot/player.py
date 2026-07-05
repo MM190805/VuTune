@@ -11,6 +11,7 @@ import threading
 import logging
 import yt_dlp
 import sys
+from dashboard import app
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +29,15 @@ class MusicPlayer:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _icecast_url(self) -> str:
-        return (
-            f"icecast://source:{self.ic['source_password']}"
-            f"@{self.ic['host']}:{self.ic['port']}{self.ic['mount']}"
-        )
-
     def _monitor(self):
         """Wait for ffmpeg to finish and fire the song-end callback."""
         if self._ffmpeg_proc:
+            # Continuously read from ffmpeg stdout and broadcast
+            while True:
+                chunk = self._ffmpeg_proc.stdout.read(4096)
+                if not chunk:
+                    break
+                app.broadcast_audio(chunk)
             self._ffmpeg_proc.wait()
         self.is_playing = False
         logger.info("Song finished.")
@@ -79,16 +80,14 @@ class MusicPlayer:
             return None
 
     def play(self, song: dict):
-        """Stream a song to Icecast. Stops any current song first."""
+        """Stream a song to internal broadcast. Stops any current song first."""
         self.stop()
 
         logger.info(f"▶ Playing: {song['title']}")
         self.current_song = song
         self.is_playing = True
 
-        icecast_url = self._icecast_url()
-
-        # ffmpeg reads from the direct URL and pushes to Icecast ─────────
+        # ffmpeg reads from the direct URL and pipes to stdout
         ffmpeg_cmd = [
             'ffmpeg',
             '-re',                      # read at native speed (real-time)
@@ -97,15 +96,13 @@ class MusicPlayer:
             '-ab', '128k',
             '-ar', '44100',
             '-f', 'mp3',
-            '-content_type', 'audio/mpeg',
-            icecast_url,
-            '-y',
+            'pipe:1',
         ]
 
         try:
             self._ffmpeg_proc = subprocess.Popen(
                 ffmpeg_cmd,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
             )
             # Monitor in background thread so we know when the song ends

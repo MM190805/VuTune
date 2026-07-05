@@ -4,12 +4,12 @@
     "password": "VuTune@1908!"
   },
   "icecast": {
-    "host": "streaming.caster.fm",
-    "port": 8000,
-    "mount": "/eoHuT",
-    "source_password": "ckjHJngsXJ",
-    "admin_password": "ckjHJngsXJ",
-    "public_url": "http://streaming.caster.fm:8000/eoHuT"
+    "host": "localhost",
+    "port": 5000,
+    "mount": "/stream",
+    "source_password": "vutune",
+    "admin_password": "vutune",
+    "public_url": "https://vutune.onrender.com/stream"
   },
   "dashboard": {
     "port": 5000,

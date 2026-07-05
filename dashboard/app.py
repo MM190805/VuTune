@@ -5,15 +5,61 @@ Dashboard Flask App
 
 import asyncio
 import threading
-from flask import Flask, render_template, request, jsonify
+import time
+import os
+import logging
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from utils.config import save_config
+
+logger = logging.getLogger(__name__)
+
+# Shared audio buffer for radio streaming
+_audio_clients = set()
+_audio_clients_lock = threading.Lock()
+_current_audio_chunk = bytearray()
+_audio_lock = threading.Lock()
+
+def broadcast_audio(data: bytes):
+    """Called by the player to push audio to all connected radio listeners."""
+    global _current_audio_chunk
+    with _audio_lock:
+        _current_audio_chunk = bytearray(data)
+    dead = set()
+    with _audio_clients_lock:
+        clients = list(_audio_clients)
+    for q in clients:
+        try:
+            q.put_nowait(data)
+        except Exception:
+            dead.add(q)
+    if dead:
+        with _audio_clients_lock:
+            _audio_clients.difference_update(dead)
 
 
 def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
     app = Flask(__name__)
     app.config['SECRET_KEY'] = config['dashboard'].get('secret_key', 'dev-key')
     CORS(app)
+
+    # ------------------------------------------------------------------ #
+    #  Self-ping uptime keeper (prevents Render from spinning down)        #
+    # ------------------------------------------------------------------ #
+    def _self_ping():
+        import urllib.request
+        while True:
+            time.sleep(270)  # ping every 4.5 minutes
+            try:
+                render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
+                if render_url:
+                    urllib.request.urlopen(f'{render_url}/ping', timeout=10)
+                    logger.info("Self-ping sent to keep Render alive.")
+            except Exception as e:
+                logger.warning(f"Self-ping failed (OK if first startup): {e}")
+
+    ping_thread = threading.Thread(target=_self_ping, daemon=True, name='UptimePinger')
+    ping_thread.start()
 
     # ------------------------------------------------------------------ #
     #  Pages                                                               #
@@ -154,5 +200,101 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             ]
         save_config(config)
         return jsonify({'success': True})
+
+    # ------------------------------------------------------------------ #
+    #  Radio Stream (serves audio directly from bot's player)              #
+    # ------------------------------------------------------------------ #
+
+    @app.route('/stream')
+    def radio_stream():
+        import queue as queue_module
+        client_q = queue_module.Queue(maxsize=50)
+        with _audio_clients_lock:
+            _audio_clients.add(client_q)
+
+        def generate():
+            try:
+                # Send ICY headers as first bytes for compatibility
+                yield b''
+                while True:
+                    try:
+                        chunk = client_q.get(timeout=10)
+                        yield chunk
+                    except Exception:
+                        # Send silence to keep connection alive
+                        yield b'\xff\xfb\x90\x00' * 100
+            finally:
+                with _audio_clients_lock:
+                    _audio_clients.discard(client_q)
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype='audio/mpeg',
+            headers={
+                'icy-name': 'VuTune Radio',
+                'icy-br': '128',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*',
+                'X-Content-Type-Options': 'nosniff',
+            }
+        )
+
+    @app.route('/ping')
+    def ping():
+        return 'pong', 200
+
+    # ------------------------------------------------------------------ #
+    #  Debug / 2FA / Logs (unified from minicast_async.py)                 #
+    # ------------------------------------------------------------------ #
+
+    @app.route('/debug')
+    def debug_page():
+        import base64
+        img_src = ''
+        try:
+            with open('debug.jpg', 'rb') as f:
+                img_src = 'data:image/jpeg;base64,' + base64.b64encode(f.read()).decode()
+        except Exception:
+            pass
+        html = f"""
+        <html><body style="background:#111;color:white;font-family:sans-serif;text-align:center;">
+        <h2>VuTune Live Bot Camera</h2>
+        {'<img src="' + img_src + '" style="max-width:80%;border:2px solid #444;border-radius:8px;"/><br><br>' if img_src else '<p>No screenshot yet...</p>'}
+        <h3>Submit 2FA code if you see a prompt above:</h3>
+        <form method="POST" action="/debug/2fa">
+            <input type="text" name="code" placeholder="Enter 2FA Code" style="padding:10px;font-size:16px;" required/>
+            <button type="submit" style="padding:10px 20px;font-size:16px;background:#e6a715;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">Submit</button>
+        </form><br>
+        <button onclick="location.reload()" style="padding:10px;">Refresh Camera</button>
+        </body></html>
+        """
+        return html, 200, {'Content-Type': 'text/html'}
+
+    @app.route('/debug/2fa', methods=['POST'])
+    def debug_2fa():
+        code = request.form.get('code', '').strip()
+        if code:
+            # Write to file so the bot's async thread can pick it up
+            with open('2fa_code.txt', 'w') as f:
+                f.write(code)
+            # Also signal directly if the browser client is available
+            try:
+                room_manager.imvu.provide_2fa(code)
+            except Exception:
+                pass
+            return '<h2>2FA Submitted! <a href="/debug" style="color:#e6a715;">Go back</a></h2>', 200, {'Content-Type': 'text/html'}
+        return '<h2>No code provided.</h2>', 400, {'Content-Type': 'text/html'}
+
+    @app.route('/logs')
+    def logs():
+        try:
+            if os.path.exists('vutune.log'):
+                with open('vutune.log', 'r', encoding='utf-8', errors='replace') as f:
+                    lines = f.readlines()
+                return ''.join(lines[-150:]), 200, {'Content-Type': 'text/plain'}
+            return 'No vutune.log found.', 200, {'Content-Type': 'text/plain'}
+        except Exception as e:
+            return str(e), 500
 
     return app
