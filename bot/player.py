@@ -75,95 +75,125 @@ class MusicPlayer:
 
     def search_youtube(self, query: str) -> dict | None:
         """
-        Search via Invidious API and get stream URL from Invidious too.
-        Completely bypasses YouTube's cloud IP blocks — no yt-dlp needed for search.
+        Search using YouTube's own internal API (no API key needed).
+        Get stream URL from Piped API (bypasses yt-dlp cloud IP block).
         """
         import requests as req_lib
+        import json
 
-        # Public Invidious instances — tried in order until one works
-        INVIDIOUS_INSTANCES = [
-            "https://inv.nadeko.net",
-            "https://invidious.privacydev.net",
-            "https://yt.artemislena.eu",
-            "https://invidious.nerdvpn.de",
-            "https://invidious.io.lol",
-            "https://invidious.fdn.fr",
-        ]
+        # ── Step 1: Search using YouTube's internal web API ──────────────────
+        YT_SEARCH_URL = "https://www.youtube.com/youtubei/v1/search"
+        YT_API_KEY    = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
-        for instance in INVIDIOUS_INSTANCES:
-            try:
-                # Step 1: Search for the video
-                resp = req_lib.get(
-                    f"{instance}/api/v1/search",
-                    params={"q": query, "type": "video", "sort_by": "relevance"},
-                    timeout=8,
-                    headers={"User-Agent": "VuTune/1.0"}
-                )
-                if resp.status_code != 200:
-                    continue
-                results = resp.json()
-                if not results:
-                    continue
-
-                video = results[0]
-                video_id = video.get("videoId")
-                if not video_id:
-                    continue
-
-                title = video.get("title", query)
-                uploader = video.get("author", "")
-                duration = video.get("lengthSeconds", 0)
-                logger.info(f"Found via Invidious ({instance}): {title} [{video_id}]")
-
-                # Step 2: Get stream URL from the same Invidious instance
-                vid_resp = req_lib.get(
-                    f"{instance}/api/v1/videos/{video_id}",
-                    params={"fields": "adaptiveFormats,formatStreams"},
-                    timeout=10,
-                    headers={"User-Agent": "VuTune/1.0"}
-                )
-                if vid_resp.status_code != 200:
-                    continue
-
-                vid_info = vid_resp.json()
-
-                # Try adaptive formats first (best audio quality)
-                stream_url = None
-                best_bitrate = 0
-                for fmt in vid_info.get("adaptiveFormats", []):
-                    if "audio" in fmt.get("type", "") and fmt.get("url"):
-                        bitrate = fmt.get("bitrate", 0)
-                        if bitrate > best_bitrate:
-                            best_bitrate = bitrate
-                            stream_url = fmt["url"]
-
-                # Fallback to regular format streams
-                if not stream_url:
-                    for fmt in vid_info.get("formatStreams", []):
-                        if fmt.get("url"):
-                            stream_url = fmt["url"]
-                            break
-
-                if not stream_url:
-                    logger.warning(f"No stream URL from {instance}, trying next...")
-                    continue
-
-                logger.info(f"Got stream URL from Invidious. Title: {title}")
-                return {
-                    'title': title,
-                    'webpage_url': f"https://www.youtube.com/watch?v={video_id}",
-                    'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
-                    'duration': duration,
-                    'uploader': uploader,
-                    'query': query,
-                    'url': stream_url,
+        payload = {
+            "context": {
+                "client": {
+                    "clientName": "WEB",
+                    "clientVersion": "2.20230810.00.00",
+                    "hl": "en",
+                    "gl": "US",
                 }
+            },
+            "query": query,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": "2.20230810.00.00",
+        }
 
-            except Exception as e:
-                logger.warning(f"Invidious {instance} failed: {e}")
-                continue
+        video_id = None
+        title = query
+        uploader = ""
+        duration = 0
 
-        logger.error("All Invidious instances failed.")
+        try:
+            resp = req_lib.post(
+                f"{YT_SEARCH_URL}?key={YT_API_KEY}",
+                json=payload,
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                # Navigate YouTube's response JSON to find the first video
+                contents = (
+                    data.get("contents", {})
+                        .get("twoColumnSearchResultsRenderer", {})
+                        .get("primaryContents", {})
+                        .get("sectionListRenderer", {})
+                        .get("contents", [])
+                )
+                for section in contents:
+                    items = section.get("itemSectionRenderer", {}).get("contents", [])
+                    for item in items:
+                        vr = item.get("videoRenderer", {})
+                        if vr.get("videoId"):
+                            video_id = vr["videoId"]
+                            title = vr.get("title", {}).get("runs", [{}])[0].get("text", query)
+                            uploader = vr.get("ownerText", {}).get("runs", [{}])[0].get("text", "")
+                            dur_text = vr.get("lengthText", {}).get("simpleText", "0:00")
+                            try:
+                                parts = dur_text.split(":")
+                                duration = sum(int(p) * 60**i for i, p in enumerate(reversed(parts)))
+                            except Exception:
+                                duration = 0
+                            logger.info(f"YouTube internal search found: {title} [{video_id}]")
+                            break
+                    if video_id:
+                        break
+        except Exception as e:
+            logger.warning(f"YouTube internal API failed: {e}")
+
+        # ── Step 2: Get stream URL from Piped API ────────────────────────────
+        if video_id:
+            PIPED_INSTANCES = [
+                "https://pipedapi.kavin.rocks",
+                "https://piped-api.garudalinux.org",
+                "https://api.piped.yt",
+                "https://pipedapi.tokhmi.xyz",
+                "https://pipedapi.moomoo.me",
+            ]
+            for piped in PIPED_INSTANCES:
+                try:
+                    pr = req_lib.get(
+                        f"{piped}/streams/{video_id}",
+                        timeout=10,
+                        headers={"User-Agent": "VuTune/1.0"}
+                    )
+                    if pr.status_code != 200:
+                        continue
+                    pdata = pr.json()
+                    # Pick best audio-only stream
+                    stream_url = None
+                    best_br = 0
+                    for s in pdata.get("audioStreams", []):
+                        if s.get("url") and s.get("bitrate", 0) > best_br:
+                            best_br = s["bitrate"]
+                            stream_url = s["url"]
+                    if not stream_url:
+                        # fallback to video stream
+                        for s in pdata.get("videoStreams", []):
+                            if s.get("url"):
+                                stream_url = s["url"]
+                                break
+                    if stream_url:
+                        logger.info(f"Got stream from Piped ({piped}): {title}")
+                        return {
+                            "title":       title,
+                            "webpage_url": f"https://www.youtube.com/watch?v={video_id}",
+                            "thumbnail":   f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                            "duration":    duration,
+                            "uploader":    uploader,
+                            "query":       query,
+                            "url":         stream_url,
+                        }
+                except Exception as e:
+                    logger.warning(f"Piped {piped} failed: {e}")
+                    continue
+
+        logger.error(f"All search/stream methods failed for: {query}")
         return None
 
 
