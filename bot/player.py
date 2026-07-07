@@ -88,25 +88,33 @@ class MusicPlayer:
                 'quiet': True,
                 'default_search': search_prefix,
                 'extract_flat': False,
+                'match_filter': lambda info, *args, **kwargs: "Too short" if info.get('duration') and info.get('duration') < 60 else None
             }
             import os
             cookie_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies.txt')
             if os.path.exists(cookie_path):
                 ydl_opts['cookiefile'] = cookie_path
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"{search_prefix}:{query}", download=False)
+                # If we're searching soundcloud, grab 5 results so we can filter out 30s premium previews
+                search_query = f"{search_prefix}:{query}"
+                if search_prefix == 'scsearch':
+                    search_query = f"scsearch5:{query}"
+                    
+                info = ydl.extract_info(search_query, download=False)
                 if 'entries' in info and len(info['entries']) > 0:
-                    entry = info['entries'][0]
-                    logger.info(f"Search found: {entry.get('title')} [{entry.get('id')}]")
-                    return {
-                        "title":       entry.get('title', query),
-                        "webpage_url": entry.get('webpage_url', ''),
-                        "thumbnail":   entry.get('thumbnail', ''),
-                        "duration":    entry.get('duration', 0),
-                        "uploader":    entry.get('uploader', ''),
-                        "query":       query,
-                        "url":         entry.get('url', ''),
-                    }
+                    # Find the first valid entry (match_filter turns rejected ones to None)
+                    for entry in info['entries']:
+                        if entry is not None:
+                            logger.info(f"Search found: {entry.get('title')} [{entry.get('id')}]")
+                            return {
+                                "title":       entry.get('title', query),
+                                "webpage_url": entry.get('webpage_url', ''),
+                                "thumbnail":   entry.get('thumbnail', ''),
+                                "duration":    entry.get('duration', 0),
+                                "uploader":    entry.get('uploader', ''),
+                                "query":       query,
+                                "url":         entry.get('url', ''),
+                            }
             return None
 
         try:
