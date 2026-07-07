@@ -159,6 +159,16 @@ class IMVUBrowserClient:
             pass_val = self.credentials.get("password", "")
 
             # ---------- 2. WAIT FOR AND CLICK JOIN BUTTON ----------
+            # Dismiss cookie consent banner so it doesn't block the Join button
+            try:
+                cookie_btn = page.locator('#onetrust-accept-btn-handler, button:has-text("Accept"), button:has-text("Accept All")').first
+                if await cookie_btn.is_visible(timeout=5000):
+                    await cookie_btn.click(force=True)
+                    logger.info("Dismissed cookie consent banner.")
+                    await page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
             try:
                 logger.info("Waiting for Join button to appear on the room page...")
                 join_btn = page.locator('button.join-cta').first
@@ -174,11 +184,11 @@ class IMVUBrowserClient:
                 logger.warning(f"Join button error (maybe already in room): {e}")
 
             # ---------- 3. HANDLE LOGIN MODAL IF IT POPS UP ----------
-            logger.info("Waiting up to 10s to see if a login modal popped up after clicking Join...")
+            logger.info("Waiting up to 45s to see if a login modal popped up after clicking Join...")
             modal = page.locator('form[name="login_form"]').first
             
             try:
-                await modal.wait_for(state="visible", timeout=10000)
+                await modal.wait_for(state="visible", timeout=45000)
                 logger.warning("Modal detected! Typing credentials like a real human...")
                 
                 # Type Username
