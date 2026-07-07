@@ -67,6 +67,7 @@ threading.Thread(target=silence_loop, daemon=True, name='SilenceLoop').start()
 
 
 @app.route('/stream')
+@app.route('/stream.mp3')
 def radio_stream():
     """IMVU connects here to listen to the radio."""
     client_q = queue.Queue(maxsize=100)
