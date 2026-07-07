@@ -60,8 +60,9 @@ class MusicPlayer:
                     try:
                         from dashboard.app import broadcast_audio
                         broadcast_audio(chunk)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).error(f"Failed to broadcast audio: {e}")
             self._ffmpeg_proc.wait()
         self.is_playing = False
         logger.info("Song finished.")
