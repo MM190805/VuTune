@@ -224,32 +224,31 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             _audio_clients.add(client_q)
 
         def generate():
-            import os, time
-            # Build one valid silence frame (417 bytes = one MP3 frame at 128kbps/44100Hz)
+            import os
             try:
                 silence_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'radio_server', 'silence.mp3')
                 with open(silence_path, 'rb') as f:
-                    raw = f.read()
-                sync_idx = raw.find(b'\xff\xfb')
-                one_frame = raw[sync_idx:sync_idx + 417] if sync_idx >= 0 else b'\xff\xfb\x90\x00' + (b'\x00' * 413)
+                    silence_data = f.read()
+                sync_idx = silence_data.find(b'\xff\xfb')
+                if sync_idx != -1:
+                    silence_data = silence_data[sync_idx:]
+                # 417 bytes * 76 frames = exactly ~2 seconds of audio
+                silence_payload = silence_data[:417] * 76
             except Exception:
-                one_frame = b'\xff\xfb\x90\x00' + (b'\x00' * 413)
-
-            # Pre-fill with 1 second of silence so mobile clients never see an empty stream
-            yield one_frame * 38
+                silence_payload = (b'\xff\xfb\x90\x00' + (b'\x00' * 413)) * 76
 
             try:
+                # Pre-fill so mobile doesn't stall on start
+                yield silence_payload
                 while True:
                     try:
-                        # Block for up to 26ms (one frame duration at 128kbps).
-                        # If real audio arrives, send it. If not, send one silence frame.
-                        # The blocking wait IS the pacing — no time.sleep() needed.
-                        chunk = client_q.get(timeout=0.026)
+                        # ffmpeg pushes 4096-byte chunks. Wait up to 2 seconds for one.
+                        chunk = client_q.get(timeout=2)
                         yield chunk
                     except Exception:
-                        # 26ms elapsed with no audio — send exactly one silence frame.
-                        # This keeps the TCP stream perfectly continuous with no stalls.
-                        yield one_frame
+                        # No audio for 2 seconds - send a full 2-second block of silence.
+                        # Nginx will trickle this payload at 17KB/s using limit_rate.
+                        yield silence_payload
             finally:
                 with _audio_clients_lock:
                     _audio_clients.discard(client_q)
