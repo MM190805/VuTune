@@ -214,14 +214,14 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
 
         def generate():
             try:
-                # Send ICY headers as first bytes for compatibility
-                yield b''
+                # Send a burst of silent MP3 frames IMMEDIATELY to prevent IMVU from timing out
+                yield b'\xff\xfb\x90\x00' * 1000
                 while True:
                     try:
-                        chunk = client_q.get(timeout=10)
+                        chunk = client_q.get(timeout=2)
                         yield chunk
                     except Exception:
-                        # Send silence to keep connection alive
+                        # Send silence to keep connection alive when music is paused
                         yield b'\xff\xfb\x90\x00' * 100
             finally:
                 with _audio_clients_lock:
@@ -236,6 +236,7 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*',
+                'X-Accel-Buffering': 'no',
                 'X-Content-Type-Options': 'nosniff',
             }
         )
