@@ -77,17 +77,18 @@ class MusicPlayer:
         """
         Use yt-dlp to search and extract the best audio stream.
         This handles all recent YouTube API changes automatically.
+        Includes a fallback to SoundCloud if YouTube blocks the datacenter IP.
         """
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'noplaylist': True,
-            'quiet': True,
-            'default_search': 'ytsearch',
-            'extract_flat': False,
-        }
-        try:
+        def _do_search(search_prefix: str):
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'noplaylist': True,
+                'quiet': True,
+                'default_search': search_prefix,
+                'extract_flat': False,
+            }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"ytsearch:{query}", download=False)
+                info = ydl.extract_info(f"{search_prefix}:{query}", download=False)
                 if 'entries' in info and len(info['entries']) > 0:
                     entry = info['entries'][0]
                     logger.info(f"Search found: {entry.get('title')} [{entry.get('id')}]")
@@ -100,8 +101,20 @@ class MusicPlayer:
                         "query":       query,
                         "url":         entry.get('url', ''),
                     }
+            return None
+
+        try:
+            # Try YouTube first
+            result = _do_search('ytsearch')
+            if result: return result
         except Exception as e:
-            logger.error(f"yt-dlp search failed: {e}")
+            logger.warning(f"YouTube search failed (likely bot block), falling back to SoundCloud: {e}")
+            try:
+                # Fallback to SoundCloud
+                result = _do_search('scsearch')
+                if result: return result
+            except Exception as e2:
+                logger.error(f"SoundCloud fallback also failed: {e2}")
         
         logger.error(f"All search/stream methods failed for: {query}")
         return None
