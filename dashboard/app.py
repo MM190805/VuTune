@@ -224,34 +224,48 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             _audio_clients.add(client_q)
 
         def generate():
-            # Load real silent MP3 to prevent strict decoders from crashing
+            # Build a single perfect 417-byte MP3 silence frame
             try:
-                import os
+                import os, time
                 silence_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'radio_server', 'silence.mp3')
                 with open(silence_path, 'rb') as f:
-                    silence_data = f.read()
-                # Strip ID3 tags if present to prevent strict decoders from rejecting the stream
-                sync_idx = silence_data.find(b'\xff\xfb')
-                if sync_idx != -1:
-                    silence_data = silence_data[sync_idx:]
-                # Extract exactly ONE 417-byte frame and multiply it to make a perfect 2-second payload
-                # This guarantees mathematically perfect frame boundaries so the decoder never crashes
-                silence_payload = silence_data[:417] * 76
+                    raw = f.read()
+                # Strip ID3 header
+                sync_idx = raw.find(b'\xff\xfb')
+                if sync_idx > 0:
+                    raw = raw[sync_idx:]
+                # One 417-byte frame = ~1/38th of a second at 128kbps/44100Hz
+                one_frame = raw[:417]
             except Exception:
-                # Absolute fallback (will likely crash strict decoders, but better than nothing)
-                silence_payload = (b'\xff\xfb\x90\x00' + (b'\x00' * 413)) * 76
-                
+                import time
+                one_frame = b'\xff\xfb\x90\x00' + (b'\x00' * 413)
+
+            # 128kbps = 16000 bytes/sec. One frame = 417 bytes.
+            # We need to send 1 frame every (417/16000) = 0.026 seconds = 26ms
+            FRAME_DURATION = 417 / 16000.0  # ~0.026 seconds per frame
+
             try:
-                # Send the entire 2-second silence payload IMMEDIATELY to prevent IMVU from timing out
-                yield silence_payload
+                next_tick = time.time()
                 while True:
+                    # Try to get a real audio chunk first
                     try:
-                        chunk = client_q.get(timeout=2)
+                        chunk = client_q.get_nowait()
                         yield chunk
-                    except Exception:
-                        # Send a full 2-seconds of silence to maintain the 128kbps bitrate!
-                        # If we send too little data, the player starves and disconnects after ~1 min.
-                        yield silence_payload
+                        # After yielding a real chunk, reset tick to now
+                        next_tick = time.time()
+                        continue
+                    except queue_module.Empty:
+                        pass
+
+                    # No audio queued - send one silence frame at exactly 128kbps rate
+                    now = time.time()
+                    if now >= next_tick:
+                        yield one_frame
+                        next_tick += FRAME_DURATION
+                    else:
+                        # Sleep just long enough until next frame is due
+                        sleep_time = next_tick - now
+                        time.sleep(min(sleep_time, FRAME_DURATION))
             finally:
                 with _audio_clients_lock:
                     _audio_clients.discard(client_q)
