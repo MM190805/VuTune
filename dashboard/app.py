@@ -28,9 +28,19 @@ def broadcast_audio(data: bytes):
     dead = set()
     with _audio_clients_lock:
         clients = list(_audio_clients)
+    
+    import queue
     for q in clients:
         try:
             q.put_nowait(data)
+        except queue.Full:
+            # Buffer is full! Drop the oldest audio chunk to make room.
+            # Do NOT kill the client, otherwise they hear silence forever!
+            try:
+                q.get_nowait()
+                q.put_nowait(data)
+            except Exception:
+                pass
         except Exception:
             dead.add(q)
     if dead:
@@ -209,7 +219,7 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
     @app.route('/stream.mp3')
     def radio_stream():
         import queue as queue_module
-        client_q = queue_module.Queue(maxsize=50)
+        client_q = queue_module.Queue(maxsize=300)
         with _audio_clients_lock:
             _audio_clients.add(client_q)
 
