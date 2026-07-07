@@ -214,16 +214,18 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             _audio_clients.add(client_q)
 
         def generate():
+            # 417-byte silent MP3 frame for 128kbps 44100Hz
+            silence_frame = b'\xff\xfb\x90\x00' + (b'\x00' * 413)
             try:
                 # Send a burst of silent MP3 frames IMMEDIATELY to prevent IMVU from timing out
-                yield b'\xff\xfb\x90\x00' * 1000
+                yield silence_frame * 100
                 while True:
                     try:
                         chunk = client_q.get(timeout=2)
                         yield chunk
                     except Exception:
                         # Send silence to keep connection alive when music is paused
-                        yield b'\xff\xfb\x90\x00' * 100
+                        yield silence_frame * 10
             finally:
                 with _audio_clients_lock:
                     _audio_clients.discard(client_q)
