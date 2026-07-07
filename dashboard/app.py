@@ -206,6 +206,7 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
     # ------------------------------------------------------------------ #
 
     @app.route('/stream')
+    @app.route('/stream.mp3')
     def radio_stream():
         import queue as queue_module
         client_q = queue_module.Queue(maxsize=50)
