@@ -214,18 +214,26 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             _audio_clients.add(client_q)
 
         def generate():
-            # 417-byte silent MP3 frame for 128kbps 44100Hz
-            silence_frame = b'\xff\xfb\x90\x00' + (b'\x00' * 413)
+            # Load real silent MP3 to prevent strict decoders from crashing
             try:
-                # Send a burst of silent MP3 frames IMMEDIATELY to prevent IMVU from timing out
-                yield silence_frame * 100
+                import os
+                silence_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'radio_server', 'silence.mp3')
+                with open(silence_path, 'rb') as f:
+                    silence_data = f.read()
+            except Exception:
+                # Absolute fallback
+                silence_data = b'\xff\xfb\x90\x00' + (b'\x00' * 413) * 10
+                
+            try:
+                # Send the entire 33KB silence.mp3 IMMEDIATELY to prevent IMVU from timing out
+                yield silence_data
                 while True:
                     try:
                         chunk = client_q.get(timeout=2)
                         yield chunk
                     except Exception:
-                        # Send silence to keep connection alive when music is paused
-                        yield silence_frame * 10
+                        # Send chunks of silence to keep connection alive when music is paused
+                        yield silence_data[:4096]
             finally:
                 with _audio_clients_lock:
                     _audio_clients.discard(client_q)
