@@ -224,48 +224,32 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             _audio_clients.add(client_q)
 
         def generate():
-            # Build a single perfect 417-byte MP3 silence frame
+            import os, time
+            # Build one valid silence frame (417 bytes = one MP3 frame at 128kbps/44100Hz)
             try:
-                import os, time
                 silence_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'radio_server', 'silence.mp3')
                 with open(silence_path, 'rb') as f:
                     raw = f.read()
-                # Strip ID3 header
                 sync_idx = raw.find(b'\xff\xfb')
-                if sync_idx > 0:
-                    raw = raw[sync_idx:]
-                # One 417-byte frame = ~1/38th of a second at 128kbps/44100Hz
-                one_frame = raw[:417]
+                one_frame = raw[sync_idx:sync_idx + 417] if sync_idx >= 0 else b'\xff\xfb\x90\x00' + (b'\x00' * 413)
             except Exception:
-                import time
                 one_frame = b'\xff\xfb\x90\x00' + (b'\x00' * 413)
 
-            # 128kbps = 16000 bytes/sec. One frame = 417 bytes.
-            # We need to send 1 frame every (417/16000) = 0.026 seconds = 26ms
-            FRAME_DURATION = 417 / 16000.0  # ~0.026 seconds per frame
+            # Pre-fill with 1 second of silence so mobile clients never see an empty stream
+            yield one_frame * 38
 
             try:
-                next_tick = time.time()
                 while True:
-                    # Try to get a real audio chunk first
                     try:
-                        chunk = client_q.get_nowait()
+                        # Block for up to 26ms (one frame duration at 128kbps).
+                        # If real audio arrives, send it. If not, send one silence frame.
+                        # The blocking wait IS the pacing — no time.sleep() needed.
+                        chunk = client_q.get(timeout=0.026)
                         yield chunk
-                        # After yielding a real chunk, reset tick to now
-                        next_tick = time.time()
-                        continue
-                    except queue_module.Empty:
-                        pass
-
-                    # No audio queued - send one silence frame at exactly 128kbps rate
-                    now = time.time()
-                    if now >= next_tick:
+                    except Exception:
+                        # 26ms elapsed with no audio — send exactly one silence frame.
+                        # This keeps the TCP stream perfectly continuous with no stalls.
                         yield one_frame
-                        next_tick += FRAME_DURATION
-                    else:
-                        # Sleep just long enough until next frame is due
-                        sleep_time = next_tick - now
-                        time.sleep(min(sleep_time, FRAME_DURATION))
             finally:
                 with _audio_clients_lock:
                     _audio_clients.discard(client_q)
