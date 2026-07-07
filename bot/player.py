@@ -75,176 +75,34 @@ class MusicPlayer:
 
     def search_youtube(self, query: str) -> dict | None:
         """
-        DEFINITIVE SOLUTION: Use YouTube's own internal APIs exclusively.
-        Step 1: /youtubei/v1/search  → get video ID   (proven to work on Render)
-        Step 2: /youtubei/v1/player  → get stream URL (same domain, same principle)
-        The Android client returns pre-signed stream URLs with no JS deciphering needed.
-        No yt-dlp, no Piped, no Invidious — just YouTube talking to itself.
+        Use yt-dlp to search and extract the best audio stream.
+        This handles all recent YouTube API changes automatically.
         """
-        import requests as req_lib
-
-        BASE_URL = "https://www.youtube.com/youtubei/v1"
-        API_KEY  = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-
-        # ── Step 1: Search ────────────────────────────────────────────────────
-        search_payload = {
-            "context": {
-                "client": {
-                    "clientName": "WEB",
-                    "clientVersion": "2.20230810.00.00",
-                    "hl": "en", "gl": "US",
-                }
-            },
-            "query": query,
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'noplaylist': True,
+            'quiet': True,
+            'default_search': 'ytsearch',
+            'extract_flat': False,
         }
-        web_headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "X-YouTube-Client-Name": "1",
-            "X-YouTube-Client-Version": "2.20230810.00.00",
-        }
-
-        video_id = None
-        title    = query
-        uploader = ""
-        duration = 0
-
         try:
-            resp = req_lib.post(
-                f"{BASE_URL}/search?key={API_KEY}",
-                json=search_payload, headers=web_headers, timeout=12,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                contents = (
-                    data.get("contents", {})
-                        .get("twoColumnSearchResultsRenderer", {})
-                        .get("primaryContents", {})
-                        .get("sectionListRenderer", {})
-                        .get("contents", [])
-                )
-                for section in contents:
-                    for item in section.get("itemSectionRenderer", {}).get("contents", []):
-                        vr = item.get("videoRenderer", {})
-                        if vr.get("videoId"):
-                            video_id = vr["videoId"]
-                            title    = vr.get("title", {}).get("runs", [{}])[0].get("text", query)
-                            uploader = vr.get("ownerText", {}).get("runs", [{}])[0].get("text", "")
-                            dur_txt  = vr.get("lengthText", {}).get("simpleText", "0:00")
-                            try:
-                                parts    = dur_txt.split(":")
-                                duration = sum(int(p) * 60**i for i, p in enumerate(reversed(parts)))
-                            except Exception:
-                                duration = 0
-                            logger.info(f"Search found: {title} [{video_id}]")
-                            break
-                    if video_id:
-                        break
-        except Exception as e:
-            logger.warning(f"YouTube search API failed: {e}")
-
-        if not video_id:
-            logger.error(f"Could not find video ID for: {query}")
-            return None
-
-        yt_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        # ── Step 2: Get stream URL via YouTube Player API (Android client) ────
-        # The Android client (clientName=ANDROID) returns pre-signed stream URLs
-        # with no JavaScript/n-signature deciphering needed.
-        for client in [
-            # Android — simplest, pre-signed URLs
-            {
-                "clientName": "ANDROID",
-                "clientVersion": "17.31.35",
-                "androidSdkVersion": 30,
-                "userAgent": "com.google.android.youtube/17.31.35(Linux; U; Android 11) gzip",
-                "hl": "en", "gl": "US",
-                "_name": "ANDROID", "_client_name": "3",
-            },
-            # iOS — also pre-signed
-            {
-                "clientName": "IOS",
-                "clientVersion": "19.29.1",
-                "deviceModel": "iPhone16,2",
-                "userAgent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)",
-                "hl": "en", "gl": "US",
-                "_name": "IOS", "_client_name": "5",
-            },
-            # TV embedded — no sign-in required
-            {
-                "clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-                "clientVersion": "2.0",
-                "hl": "en", "gl": "US",
-                "_name": "TV_EMBED", "_client_name": "85",
-            },
-        ]:
-            name        = client.pop("_name")
-            client_num  = client.pop("_client_name")
-            user_agent  = client.get("userAgent", "Mozilla/5.0")
-            try:
-                player_payload = {
-                    "videoId": video_id,
-                    "context": {"client": client},
-                }
-                player_headers = {
-                    "Content-Type": "application/json",
-                    "User-Agent": user_agent,
-                    "X-YouTube-Client-Name": client_num,
-                    "X-YouTube-Client-Version": client.get("clientVersion", "1.0"),
-                }
-                pr = req_lib.post(
-                    f"{BASE_URL}/player?key={API_KEY}",
-                    json=player_payload, headers=player_headers, timeout=15,
-                )
-                if pr.status_code != 200:
-                    logger.warning(f"Player API ({name}) returned {pr.status_code}")
-                    continue
-
-                pdata = pr.json()
-                status = pdata.get("playabilityStatus", {}).get("status", "")
-                if status != "OK":
-                    logger.warning(f"Player API ({name}) playability={status}")
-                    continue
-
-                # Pick best audio-only adaptive stream
-                stream_url  = None
-                best_bitrate = 0
-                for fmt in pdata.get("streamingData", {}).get("adaptiveFormats", []):
-                    if "audio" in fmt.get("mimeType", "") and fmt.get("url"):
-                        br = fmt.get("bitrate", 0)
-                        if br > best_bitrate:
-                            best_bitrate = br
-                            stream_url   = fmt["url"]
-
-                # Fallback: regular progressive formats
-                if not stream_url:
-                    for fmt in pdata.get("streamingData", {}).get("formats", []):
-                        if fmt.get("url"):
-                            stream_url = fmt["url"]
-                            break
-
-                if stream_url:
-                    logger.info(f"Got stream via YouTube Player API ({name}): {title}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch:{query}", download=False)
+                if 'entries' in info and len(info['entries']) > 0:
+                    entry = info['entries'][0]
+                    logger.info(f"Search found: {entry.get('title')} [{entry.get('id')}]")
                     return {
-                        "title":       title,
-                        "webpage_url": yt_url,
-                        "thumbnail":   f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
-                        "duration":    duration,
-                        "uploader":    uploader,
+                        "title":       entry.get('title', query),
+                        "webpage_url": entry.get('webpage_url', ''),
+                        "thumbnail":   entry.get('thumbnail', ''),
+                        "duration":    entry.get('duration', 0),
+                        "uploader":    entry.get('uploader', ''),
                         "query":       query,
-                        "url":         stream_url,
+                        "url":         entry.get('url', ''),
                     }
-                else:
-                    logger.warning(f"Player API ({name}) returned no stream URLs")
-
-            except Exception as e:
-                logger.warning(f"Player API ({name}) failed: {e}")
-                continue
-
-        logger.error(f"All YouTube player API clients failed for: {query}")
-        return None
-
+        except Exception as e:
+            logger.error(f"yt-dlp search failed: {e}")
+        
         logger.error(f"All search/stream methods failed for: {query}")
         return None
 
