@@ -31,6 +31,7 @@ class MusicPlayer:
 
     def _monitor(self):
         """Read ffmpeg stdout and push audio chunks to the radio server."""
+        import os
         radio_url = os.environ.get("RADIO_SERVER_URL", "").rstrip("/")
         radio_secret = os.environ.get("RADIO_PUSH_SECRET", "vutune-radio-secret")
         push_url = f"{radio_url}/push" if radio_url else None

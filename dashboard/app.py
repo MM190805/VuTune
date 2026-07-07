@@ -234,16 +234,16 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
                 sync_idx = silence_data.find(b'\xff\xfb')
                 if sync_idx != -1:
                     silence_data = silence_data[sync_idx:]
-                # Strip ID3v1 tag at the end if present (128 bytes starting with TAG)
-                if len(silence_data) >= 128 and silence_data[-128:-125] == b'TAG':
-                    silence_data = silence_data[:-128]
+                # Extract exactly ONE 417-byte frame and multiply it to make a perfect 2-second payload
+                # This guarantees mathematically perfect frame boundaries so the decoder never crashes
+                silence_payload = silence_data[:417] * 76
             except Exception:
                 # Absolute fallback (will likely crash strict decoders, but better than nothing)
-                silence_data = b'\xff\xfb\x90\x00' + (b'\x00' * 413) * 10
+                silence_payload = (b'\xff\xfb\x90\x00' + (b'\x00' * 413)) * 76
                 
             try:
                 # Send the entire 2-second silence payload IMMEDIATELY to prevent IMVU from timing out
-                yield silence_data
+                yield silence_payload
                 while True:
                     try:
                         chunk = client_q.get(timeout=2)
@@ -251,7 +251,7 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
                     except Exception:
                         # Send a full 2-seconds of silence to maintain the 128kbps bitrate!
                         # If we send too little data, the player starves and disconnects after ~1 min.
-                        yield silence_data
+                        yield silence_payload
             finally:
                 with _audio_clients_lock:
                     _audio_clients.discard(client_q)
