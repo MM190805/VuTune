@@ -89,6 +89,10 @@ class MusicPlayer:
                 'default_search': search_prefix,
                 'extract_flat': False,
             }
+            import os
+            cookie_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies.txt')
+            if os.path.exists(cookie_path):
+                ydl_opts['cookiefile'] = cookie_path
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"{search_prefix}:{query}", download=False)
                 if 'entries' in info and len(info['entries']) > 0:
