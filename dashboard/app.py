@@ -230,6 +230,10 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
                 silence_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'radio_server', 'silence.mp3')
                 with open(silence_path, 'rb') as f:
                     silence_data = f.read()
+                # Strip ID3 tags if present to prevent strict decoders from rejecting the stream
+                sync_idx = silence_data.find(b'\xff\xfb')
+                if sync_idx != -1:
+                    silence_data = silence_data[sync_idx:]
             except Exception:
                 # Absolute fallback
                 silence_data = b'\xff\xfb\x90\x00' + (b'\x00' * 413) * 10
@@ -254,7 +258,9 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             headers={
                 'icy-name': 'VuTune Radio',
                 'icy-br': '128',
-                'Cache-Control': 'no-cache',
+                'icy-genre': 'Various',
+                'icy-pub': '1',
+                'Cache-Control': 'no-cache, no-store',
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*',
                 'X-Accel-Buffering': 'no',
