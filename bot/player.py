@@ -90,13 +90,21 @@ class MusicPlayer:
             result = _do_search('ytsearch')
             if result: return result
         except Exception as e:
-            logger.warning(f"YouTube search failed (likely bot block), falling back to SoundCloud: {e}")
-            try:
-                # Fallback to SoundCloud
-                result = _do_search('scsearch')
-                if result: return result
-            except Exception as e2:
-                logger.error(f"SoundCloud fallback also failed: {e2}")
+            logger.warning(f"YouTube search failed: {e}")
+            
+        try:
+            # Try YouTube Music second
+            result = _do_search('ytmsearch')
+            if result: return result
+        except Exception as e:
+            logger.warning(f"YouTube Music search failed: {e}")
+
+        try:
+            # Fallback to SoundCloud
+            result = _do_search('scsearch')
+            if result: return result
+        except Exception as e:
+            logger.error(f"SoundCloud fallback also failed: {e}")
         
         logger.error(f"All search/stream methods failed for: {query}")
         return None
