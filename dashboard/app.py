@@ -14,39 +14,7 @@ from utils.config import save_config
 
 logger = logging.getLogger(__name__)
 
-# Shared audio buffer for radio streaming
-_audio_clients = set()
-_audio_clients_lock = threading.Lock()
-_current_audio_chunk = bytearray()
-_audio_lock = threading.Lock()
-
-def broadcast_audio(data: bytes):
-    """Called by the player to push audio to all connected radio listeners."""
-    global _current_audio_chunk
-    with _audio_lock:
-        _current_audio_chunk = bytearray(data)
-    dead = set()
-    with _audio_clients_lock:
-        clients = list(_audio_clients)
-    
-    import queue
-    for q in clients:
-        try:
-            q.put_nowait(data)
-        except queue.Full:
-            # Buffer is full! Drop the oldest audio chunk to make room.
-            # Do NOT kill the client, otherwise they hear silence forever!
-            try:
-                q.get_nowait()
-                q.put_nowait(data)
-            except Exception:
-                pass
-        except Exception:
-            dead.add(q)
-    if dead:
-        with _audio_clients_lock:
-            _audio_clients.difference_update(dead)
-
+# Audio streaming is now handled externally by Icecast2
 
 def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
     app = Flask(__name__)
@@ -210,64 +178,6 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             ]
         save_config(config)
         return jsonify({'success': True})
-
-    # ------------------------------------------------------------------ #
-    #  Radio Stream (serves audio directly from bot's player)              #
-    # ------------------------------------------------------------------ #
-
-    @app.route('/stream')
-    @app.route('/stream.mp3')
-    def radio_stream():
-        import queue as queue_module
-        client_q = queue_module.Queue(maxsize=300)
-        with _audio_clients_lock:
-            _audio_clients.add(client_q)
-
-        def generate():
-            import os
-            try:
-                silence_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'radio_server', 'silence.mp3')
-                with open(silence_path, 'rb') as f:
-                    silence_data = f.read()
-                sync_idx = silence_data.find(b'\xff\xfb')
-                if sync_idx != -1:
-                    silence_data = silence_data[sync_idx:]
-                # 417 bytes * 76 frames = exactly ~2 seconds of audio
-                silence_payload = silence_data[:417] * 76
-            except Exception:
-                silence_payload = (b'\xff\xfb\x90\x00' + (b'\x00' * 413)) * 76
-
-            try:
-                # Pre-fill so mobile doesn't stall on start
-                yield silence_payload
-                while True:
-                    try:
-                        # ffmpeg pushes 4096-byte chunks. Wait up to 2 seconds for one.
-                        chunk = client_q.get(timeout=2)
-                        yield chunk
-                    except Exception:
-                        # No audio for 2 seconds - send a full 2-second block of silence.
-                        # Nginx will trickle this payload at 17KB/s using limit_rate.
-                        yield silence_payload
-            finally:
-                with _audio_clients_lock:
-                    _audio_clients.discard(client_q)
-
-        return Response(
-            stream_with_context(generate()),
-            mimetype='audio/mpeg',
-            headers={
-                'icy-name': 'VuTune Radio',
-                'icy-br': '128',
-                'icy-genre': 'Various',
-                'icy-pub': '1',
-                'Cache-Control': 'no-cache, no-store',
-                'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*',
-                'X-Accel-Buffering': 'no',
-                'X-Content-Type-Options': 'nosniff',
-            }
-        )
 
     @app.route('/ping')
     def ping():

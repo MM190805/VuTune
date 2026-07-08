@@ -30,40 +30,8 @@ class MusicPlayer:
     # ------------------------------------------------------------------
 
     def _monitor(self):
-        """Read ffmpeg stdout and push audio chunks to the radio server."""
-        import os
-        radio_url = os.environ.get("RADIO_SERVER_URL", "").rstrip("/")
-        radio_secret = os.environ.get("RADIO_PUSH_SECRET", "vutune-radio-secret")
-        push_url = f"{radio_url}/push" if radio_url else None
-
+        """Wait for ffmpeg to finish streaming to Icecast."""
         if self._ffmpeg_proc:
-            while True:
-                chunk = self._ffmpeg_proc.stdout.read(4096)
-                if not chunk:
-                    break
-                if push_url:
-                    try:
-                        import urllib.request
-                        req = urllib.request.Request(
-                            push_url,
-                            data=chunk,
-                            method='POST',
-                            headers={
-                                'Content-Type': 'audio/mpeg',
-                                'X-Radio-Secret': radio_secret,
-                            }
-                        )
-                        urllib.request.urlopen(req, timeout=2)
-                    except Exception:
-                        pass  # Don't crash the player if radio server is down
-                else:
-                    # Fallback: broadcast locally if no radio server configured
-                    try:
-                        from dashboard.app import broadcast_audio
-                        broadcast_audio(chunk)
-                    except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).error(f"Failed to broadcast audio: {e}")
             self._ffmpeg_proc.wait()
         self.is_playing = False
         logger.info("Song finished.")
@@ -142,7 +110,7 @@ class MusicPlayer:
         self.current_song = song
         self.is_playing = True
 
-        # ffmpeg reads from the direct URL and pipes to stdout
+        # ffmpeg streams directly to Icecast
         ffmpeg_cmd = [
             'ffmpeg',
             '-re',                      # read at native speed (real-time)
@@ -150,14 +118,15 @@ class MusicPlayer:
             '-acodec', 'libmp3lame',
             '-ab', '128k',
             '-ar', '44100',
+            '-content_type', 'audio/mpeg',
             '-f', 'mp3',
-            'pipe:1',
+            'icecast://source:vutune_radio_secret@localhost:8000/stream',
         ]
 
         try:
             self._ffmpeg_proc = subprocess.Popen(
                 ffmpeg_cmd,
-                stdout=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             # Monitor in background thread so we know when the song ends
