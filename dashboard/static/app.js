@@ -275,8 +275,7 @@ async function loadSettings() {
     const s = await api('/api/settings');
     document.getElementById('anyoneToggle').checked = s.anyone_can_use;
     document.getElementById('allowedUsersInput').value = (s.allowed_users || []).join(', ');
-    document.getElementById('streamUrl').textContent =
-      `http://localhost:${s.icecast_port}${s.icecast_mount}`;
+    document.getElementById('streamUrl').textContent = s.stream_url || 'https://vutune.duckdns.org/stream';
     toggleAllowedRow(!s.anyone_can_use);
   } catch (_) {}
 }

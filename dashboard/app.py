@@ -161,8 +161,7 @@ def create_app(config: dict, room_manager, bot_loop: asyncio.AbstractEventLoop):
             'anyone_can_use': config.get('anyone_can_use', True),
             'allowed_users': config.get('allowed_users', []),
             'bot_name': config.get('bot_name', 'VuTune'),
-            'icecast_mount': config['icecast']['mount'],
-            'icecast_port': config['icecast']['port'],
+            'stream_url': 'https://vutune.duckdns.org/stream',
         })
 
     @app.route('/api/settings', methods=['POST'])
